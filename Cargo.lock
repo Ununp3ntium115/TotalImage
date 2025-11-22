@@ -1060,6 +1060,7 @@ dependencies = [
  "anyhow",
  "clap",
  "totalimage-core",
+ "totalimage-pipeline",
  "totalimage-territories",
  "totalimage-vaults",
  "totalimage-zones",
