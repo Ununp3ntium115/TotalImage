@@ -4,13 +4,13 @@
 //!
 //! This crate provides implementations of various disk image container formats:
 //! - **RawVault**: Plain sector images (.img, .ima, .flp, .vfd, .dsk, .iso)
-//! - **MicrosoftVault**: VHD format (coming soon)
+//! - **VhdVault**: Microsoft VHD format (Fixed and Dynamic)
 //! - **NhdVault**, **ImzVault**, etc. (future)
 //!
 //! ## Example
 //!
 //! ```rust,no_run
-//! use totalimage_vaults::{RawVault, VaultConfig};
+//! use totalimage_vaults::{RawVault, VhdVault, VaultConfig};
 //! use totalimage_core::Vault;
 //! use std::path::Path;
 //!
@@ -22,8 +22,19 @@
 //!
 //! println!("Type: {}", vault.identify());
 //! println!("Size: {} bytes", vault.length());
+//!
+//! // Open a VHD file
+//! let mut vhd = VhdVault::open(
+//!     Path::new("disk.vhd"),
+//!     VaultConfig::default()
+//! ).unwrap();
+//!
+//! println!("Type: {}", vhd.identify());
+//! println!("Size: {} bytes", vhd.length());
 //! ```
 
 pub mod raw;
+pub mod vhd;
 
 pub use raw::{RawVault, VaultConfig};
+pub use vhd::VhdVault;
