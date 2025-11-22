@@ -36,10 +36,12 @@
 //! ```
 
 pub mod error;
+pub mod security;
 pub mod traits;
 pub mod types;
 
 // Re-export commonly used items
 pub use error::{Error, Result};
+pub use security::*;
 pub use traits::{DirectoryCell, ReadSeek, ReadWriteSeek, Territory, Vault, ZoneTable};
 pub use types::{OccupantInfo, Zone};

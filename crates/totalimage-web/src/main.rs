@@ -15,9 +15,8 @@ use axum::{
 use cache::MetadataCache;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
-use totalimage_core::{Result as TotalImageResult, Territory, Vault, ZoneTable};
+use totalimage_core::{validate_file_path, Result as TotalImageResult, Vault, ZoneTable};
 use totalimage_vaults::{RawVault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
 
@@ -196,8 +195,9 @@ async fn vault_zones(
 }
 
 fn get_vault_info(image_path: &str) -> TotalImageResult<VaultInfoResponse> {
-    let path = Path::new(image_path);
-    let mut vault = RawVault::open(path, VaultConfig::default())?;
+    // Validate path to prevent path traversal attacks
+    let path = validate_file_path(image_path)?;
+    let mut vault = RawVault::open(&path, VaultConfig::default())?;
 
     let vault_type = vault.identify().to_string();
     let size_bytes = vault.length();
@@ -229,8 +229,9 @@ fn get_vault_info(image_path: &str) -> TotalImageResult<VaultInfoResponse> {
 }
 
 fn get_vault_zones(image_path: &str) -> TotalImageResult<VaultZonesResponse> {
-    let path = Path::new(image_path);
-    let mut vault = RawVault::open(path, VaultConfig::default())?;
+    // Validate path to prevent path traversal attacks
+    let path = validate_file_path(image_path)?;
+    let mut vault = RawVault::open(&path, VaultConfig::default())?;
 
     let sector_size = 512;
 

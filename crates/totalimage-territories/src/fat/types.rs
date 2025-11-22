@@ -1,6 +1,7 @@
 //! FAT file system types and structures
 
 use std::fmt;
+use totalimage_core::{checked_multiply_u32_to_u64, checked_multiply_u64, Error, Result};
 
 /// FAT type variants
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,9 +56,12 @@ pub struct BiosParameterBlock {
 
 impl BiosParameterBlock {
     /// Parse BPB from boot sector bytes
-    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+    ///
+    /// # Security
+    /// Uses checked arithmetic to prevent integer overflow attacks
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < 512 {
-            return None;
+            return Err(Error::invalid_territory("BPB too short".to_string()));
         }
 
         // Parse common BPB fields (offsets 11-35)
@@ -74,6 +78,16 @@ impl BiosParameterBlock {
         let hidden_sectors = u32::from_le_bytes([bytes[28], bytes[29], bytes[30], bytes[31]]);
         let total_sectors_32 = u32::from_le_bytes([bytes[32], bytes[33], bytes[34], bytes[35]]);
 
+        // Validate sectors_per_cluster to prevent divide by zero
+        if sectors_per_cluster == 0 {
+            return Err(Error::invalid_territory("Invalid sectors_per_cluster: 0".to_string()));
+        }
+
+        // Validate bytes_per_sector
+        if bytes_per_sector == 0 {
+            return Err(Error::invalid_territory("Invalid bytes_per_sector: 0".to_string()));
+        }
+
         // Determine total sectors
         let total_sectors = if total_sectors_16 != 0 {
             total_sectors_16 as u32
@@ -81,9 +95,10 @@ impl BiosParameterBlock {
             total_sectors_32
         };
 
-        // Calculate data region size to determine FAT type
-        let root_dir_sectors = ((root_entries as u32 * 32) + (bytes_per_sector as u32 - 1))
-            / bytes_per_sector as u32;
+        // Calculate data region size to determine FAT type (with checked arithmetic)
+        let root_entries_bytes = checked_multiply_u32_to_u64(root_entries as u32, 32, "BPB root entries")?;
+        let bytes_per_sector_minus_1 = bytes_per_sector.saturating_sub(1) as u64;
+        let root_dir_sectors = ((root_entries_bytes + bytes_per_sector_minus_1) / bytes_per_sector as u64) as u32;
 
         let sectors_per_fat = if sectors_per_fat_16 != 0 {
             sectors_per_fat_16 as u32
@@ -92,10 +107,19 @@ impl BiosParameterBlock {
             u32::from_le_bytes([bytes[36], bytes[37], bytes[38], bytes[39]])
         };
 
-        let data_sectors = total_sectors
-            - (reserved_sectors as u32
-                + (num_fats as u32 * sectors_per_fat)
-                + root_dir_sectors);
+        // Calculate FAT size with checked arithmetic
+        let fat_size = checked_multiply_u32_to_u64(num_fats as u32, sectors_per_fat, "BPB FAT size")?;
+
+        // Calculate total non-data sectors
+        let non_data_sectors = (reserved_sectors as u64)
+            .checked_add(fat_size)
+            .and_then(|v| v.checked_add(root_dir_sectors as u64))
+            .ok_or_else(|| Error::invalid_territory("BPB sector calculation overflow".to_string()))?;
+
+        // Calculate data sectors with overflow check
+        let data_sectors = (total_sectors as u64)
+            .checked_sub(non_data_sectors)
+            .ok_or_else(|| Error::invalid_territory("BPB data sectors underflow".to_string()))? as u32;
 
         let cluster_count = data_sectors / sectors_per_cluster as u32;
 
@@ -108,7 +132,7 @@ impl BiosParameterBlock {
             FatType::Fat32
         };
 
-        Some(Self {
+        Ok(Self {
             bytes_per_sector,
             sectors_per_cluster,
             reserved_sectors,
@@ -145,27 +169,84 @@ impl BiosParameterBlock {
     }
 
     /// Calculate the byte offset of the first FAT
-    pub fn fat_offset(&self) -> u32 {
-        self.reserved_sectors as u32 * self.bytes_per_sector as u32
+    ///
+    /// # Security
+    /// Uses checked arithmetic to prevent overflow
+    pub fn fat_offset(&self) -> Result<u32> {
+        checked_multiply_u32_to_u64(
+            self.reserved_sectors as u32,
+            self.bytes_per_sector as u32,
+            "FAT offset"
+        ).and_then(|v| {
+            v.try_into().map_err(|_| Error::invalid_territory("FAT offset exceeds u32".to_string()))
+        })
     }
 
     /// Calculate the byte offset of the root directory
-    pub fn root_dir_offset(&self) -> u32 {
-        let fat_size = self.sectors_per_fat() * self.bytes_per_sector as u32;
-        self.fat_offset() + (self.num_fats as u32 * fat_size)
+    ///
+    /// # Security
+    /// Uses checked arithmetic to prevent overflow
+    pub fn root_dir_offset(&self) -> Result<u32> {
+        let fat_size = checked_multiply_u32_to_u64(
+            self.sectors_per_fat(),
+            self.bytes_per_sector as u32,
+            "FAT size"
+        )?;
+
+        let total_fat_size = checked_multiply_u64(
+            self.num_fats as u64,
+            fat_size,
+            "Total FAT size"
+        )?;
+
+        let fat_offset = self.fat_offset()? as u64;
+
+        fat_offset
+            .checked_add(total_fat_size)
+            .and_then(|v| v.try_into().ok())
+            .ok_or_else(|| Error::invalid_territory("Root dir offset overflow".to_string()))
     }
 
     /// Calculate the byte offset of the data region
-    pub fn data_offset(&self) -> u32 {
-        let root_dir_sectors =
-            ((self.root_entries as u32 * 32) + (self.bytes_per_sector as u32 - 1))
-                / self.bytes_per_sector as u32;
-        self.root_dir_offset() + (root_dir_sectors * self.bytes_per_sector as u32)
+    ///
+    /// # Security
+    /// Uses checked arithmetic to prevent overflow
+    pub fn data_offset(&self) -> Result<u32> {
+        let root_entries_bytes = checked_multiply_u32_to_u64(
+            self.root_entries as u32,
+            32,
+            "Root entries size"
+        )?;
+
+        let bytes_per_sector_minus_1 = self.bytes_per_sector.saturating_sub(1) as u64;
+        let root_dir_sectors = ((root_entries_bytes + bytes_per_sector_minus_1) / self.bytes_per_sector as u64) as u32;
+
+        let root_dir_size = checked_multiply_u32_to_u64(
+            root_dir_sectors,
+            self.bytes_per_sector as u32,
+            "Root dir size"
+        )?;
+
+        let root_offset = self.root_dir_offset()? as u64;
+
+        root_offset
+            .checked_add(root_dir_size)
+            .and_then(|v| v.try_into().ok())
+            .ok_or_else(|| Error::invalid_territory("Data offset overflow".to_string()))
     }
 
     /// Get bytes per cluster
-    pub fn bytes_per_cluster(&self) -> u32 {
-        self.sectors_per_cluster as u32 * self.bytes_per_sector as u32
+    ///
+    /// # Security
+    /// Uses checked arithmetic to prevent overflow
+    pub fn bytes_per_cluster(&self) -> Result<u32> {
+        checked_multiply_u32_to_u64(
+            self.sectors_per_cluster as u32,
+            self.bytes_per_sector as u32,
+            "Bytes per cluster"
+        ).and_then(|v| {
+            v.try_into().map_err(|_| Error::invalid_territory("Bytes per cluster exceeds u32".to_string()))
+        })
     }
 }
 
@@ -329,6 +410,8 @@ mod tests {
 
         let bpb = BiosParameterBlock::from_bytes(&bytes).unwrap();
         assert_eq!(bpb.total_sectors(), 2880);
+        assert!(bpb.fat_offset().is_ok());
+        assert!(bpb.bytes_per_cluster().is_ok());
     }
 
     #[test]

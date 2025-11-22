@@ -27,20 +27,34 @@ impl FatTerritory {
     /// # Errors
     ///
     /// Returns an error if the boot sector cannot be read or is invalid
+    ///
+    /// # Security
+    /// Uses validated BPB parsing with checked arithmetic to prevent integer overflow
     pub fn parse(stream: &mut dyn ReadSeek) -> Result<Self> {
         // Read boot sector
         stream.seek(SeekFrom::Start(0))?;
         let mut boot_sector = vec![0u8; 512];
         stream.read_exact(&mut boot_sector)?;
 
-        // Parse BPB
-        let bpb = BiosParameterBlock::from_bytes(&boot_sector)
-            .ok_or_else(|| Error::invalid_territory("Invalid FAT boot sector".to_string()))?;
+        // Parse BPB with security validation
+        let bpb = BiosParameterBlock::from_bytes(&boot_sector)?;
 
-        // Read FAT table
-        let fat_size = bpb.sectors_per_fat() * bpb.bytes_per_sector as u32;
-        stream.seek(SeekFrom::Start(bpb.fat_offset() as u64))?;
-        let mut fat_table = vec![0u8; fat_size as usize];
+        // Read FAT table with checked arithmetic
+        use totalimage_core::validate_allocation_size;
+        let fat_size_u64 = totalimage_core::checked_multiply_u32_to_u64(
+            bpb.sectors_per_fat(),
+            bpb.bytes_per_sector as u32,
+            "FAT table size"
+        )?;
+
+        let fat_size = validate_allocation_size(
+            fat_size_u64,
+            totalimage_core::MAX_FAT_TABLE_SIZE,
+            "FAT table"
+        )?;
+
+        stream.seek(SeekFrom::Start(bpb.fat_offset()? as u64))?;
+        let mut fat_table = vec![0u8; fat_size];
         stream.read_exact(&mut fat_table)?;
 
         let identifier = format!("{} filesystem", bpb.fat_type);
@@ -164,11 +178,25 @@ impl FatTerritory {
     }
 
     /// Calculate byte offset for a cluster
-    pub fn cluster_to_offset(&self, cluster: u32) -> u64 {
+    ///
+    /// # Security
+    /// Uses checked arithmetic to prevent overflow
+    pub fn cluster_to_offset(&self, cluster: u32) -> Result<u64> {
         // Cluster 2 is the first data cluster
         let cluster_offset = if cluster >= 2 { cluster - 2 } else { 0 };
-        self.bpb.data_offset() as u64
-            + (cluster_offset as u64 * self.bpb.bytes_per_cluster() as u64)
+
+        let data_offset = self.bpb.data_offset()? as u64;
+        let bytes_per_cluster = self.bpb.bytes_per_cluster()? as u64;
+
+        let cluster_bytes = totalimage_core::checked_multiply_u64(
+            cluster_offset as u64,
+            bytes_per_cluster,
+            "Cluster offset calculation"
+        )?;
+
+        data_offset
+            .checked_add(cluster_bytes)
+            .ok_or_else(|| Error::invalid_territory("Cluster offset overflow".to_string()))
     }
 
     /// Read root directory entries (FAT12/16 only)
@@ -178,7 +206,7 @@ impl FatTerritory {
             return Ok(Vec::new());
         }
 
-        stream.seek(SeekFrom::Start(self.bpb.root_dir_offset() as u64))?;
+        stream.seek(SeekFrom::Start(self.bpb.root_dir_offset()? as u64))?;
 
         let mut entries = Vec::new();
         let mut entry_bytes = vec![0u8; DirectoryEntry::ENTRY_SIZE];
@@ -235,12 +263,24 @@ impl FatTerritory {
     }
 
     /// Read file data from clusters
+    ///
+    /// # Security
+    /// Validates file size and uses checked arithmetic
     pub fn read_file_data(&self, stream: &mut dyn ReadSeek, entry: &DirectoryEntry) -> Result<Vec<u8>> {
         let first_cluster = entry.first_cluster();
 
         // Special case: empty files or files in root directory with cluster 0
         if first_cluster == 0 || entry.file_size == 0 {
             return Ok(Vec::new());
+        }
+
+        // Validate file size against extraction limit
+        use totalimage_core::MAX_FILE_EXTRACT_SIZE;
+        if entry.file_size as u64 > MAX_FILE_EXTRACT_SIZE {
+            return Err(Error::invalid_territory(format!(
+                "File size {} exceeds extraction limit {}",
+                entry.file_size, MAX_FILE_EXTRACT_SIZE
+            )));
         }
 
         // Get cluster chain
@@ -252,11 +292,11 @@ impl FatTerritory {
 
         // Read data from clusters
         let mut data = Vec::with_capacity(entry.file_size as usize);
-        let cluster_size = self.bpb.bytes_per_cluster() as usize;
+        let cluster_size = self.bpb.bytes_per_cluster()? as usize;
         let mut remaining = entry.file_size as usize;
 
         for cluster in chain {
-            let offset = self.cluster_to_offset(cluster);
+            let offset = self.cluster_to_offset(cluster)?;
             stream.seek(SeekFrom::Start(offset))?;
 
             let to_read = remaining.min(cluster_size);
@@ -291,7 +331,12 @@ impl Territory for FatTerritory {
     }
 
     fn domain_size(&self) -> u64 {
-        self.bpb.total_sectors() as u64 * self.bpb.bytes_per_sector as u64
+        // Use saturating multiply to prevent overflow, truncate if needed
+        totalimage_core::checked_multiply_u32_to_u64(
+            self.bpb.total_sectors(),
+            self.bpb.bytes_per_sector as u32,
+            "Domain size"
+        ).unwrap_or(0)
     }
 
     fn liberated_space(&self) -> u64 {
@@ -301,7 +346,7 @@ impl Territory for FatTerritory {
     }
 
     fn block_size(&self) -> u64 {
-        self.bpb.bytes_per_cluster() as u64
+        self.bpb.bytes_per_cluster().unwrap_or(0) as u64
     }
 
     fn hierarchical(&self) -> bool {
@@ -434,7 +479,7 @@ mod tests {
         // Total: 1 + 18 + 14 = 33 sectors = 16896 bytes
         let expected = 16896;
 
-        assert_eq!(territory.cluster_to_offset(2), expected);
+        assert_eq!(territory.cluster_to_offset(2).unwrap(), expected);
     }
 
     #[test]
