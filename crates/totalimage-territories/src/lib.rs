@@ -4,7 +4,7 @@
 //!
 //! This crate provides Territory implementations for various file systems:
 //! - **FAT**: FAT12, FAT16, and FAT32 file systems
-//! - **ISO 9660**: CD-ROM file system - coming soon
+//! - **ISO 9660**: CD-ROM file system (read-only)
 //! - **exFAT**: Extended FAT file system - coming soon
 //!
 //! ## Example
@@ -17,10 +17,11 @@
 //! // Parse FAT filesystem from a partition
 //! let mut file = File::open("partition.img").unwrap();
 //! let territory = FatTerritory::parse(&mut file).unwrap();
-//!
 //! println!("Filesystem: {}", territory.identify());
 //! ```
 
 pub mod fat;
+pub mod iso;
 
 pub use fat::FatTerritory;
+pub use iso::IsoTerritory;

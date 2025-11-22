@@ -202,6 +202,77 @@ impl FatTerritory {
 
         Ok(entries)
     }
+
+    /// List root directory as OccupantInfo (for CLI)
+    pub fn list_root_directory(&self, stream: &mut dyn ReadSeek) -> Result<Vec<OccupantInfo>> {
+        let entries = self.read_root_directory(stream)?;
+
+        Ok(entries
+            .into_iter()
+            .map(|entry| OccupantInfo {
+                name: entry.name.clone(),
+                is_directory: entry.is_directory(),
+                size: entry.file_size as u64,
+                created: None,
+                modified: None,
+                accessed: None,
+                attributes: entry.attributes as u32,
+            })
+            .collect())
+    }
+
+    /// Find a file in the root directory by name
+    pub fn find_file_in_root(&self, stream: &mut dyn ReadSeek, name: &str) -> Result<DirectoryEntry> {
+        let entries = self.read_root_directory(stream)?;
+
+        for entry in entries {
+            if entry.name.eq_ignore_ascii_case(name) {
+                return Ok(entry);
+            }
+        }
+
+        Err(Error::not_found(format!("File not found: {}", name)))
+    }
+
+    /// Read file data from clusters
+    pub fn read_file_data(&self, stream: &mut dyn ReadSeek, entry: &DirectoryEntry) -> Result<Vec<u8>> {
+        let first_cluster = entry.first_cluster();
+
+        // Special case: empty files or files in root directory with cluster 0
+        if first_cluster == 0 || entry.file_size == 0 {
+            return Ok(Vec::new());
+        }
+
+        // Get cluster chain
+        let chain = self.get_cluster_chain(first_cluster);
+
+        if chain.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Read data from clusters
+        let mut data = Vec::with_capacity(entry.file_size as usize);
+        let cluster_size = self.bpb.bytes_per_cluster() as usize;
+        let mut remaining = entry.file_size as usize;
+
+        for cluster in chain {
+            let offset = self.cluster_to_offset(cluster);
+            stream.seek(SeekFrom::Start(offset))?;
+
+            let to_read = remaining.min(cluster_size);
+            let mut cluster_data = vec![0u8; to_read];
+            stream.read_exact(&mut cluster_data)?;
+
+            data.extend_from_slice(&cluster_data);
+            remaining -= to_read;
+
+            if remaining == 0 {
+                break;
+            }
+        }
+
+        Ok(data)
+    }
 }
 
 impl Territory for FatTerritory {
