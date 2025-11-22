@@ -1,3 +1,26 @@
-//! TotalImage Territories - File system implementations
+//! # TotalImage Territories
+//!
+//! File system implementations for the Total Liberation project.
+//!
+//! This crate provides Territory implementations for various file systems:
+//! - **FAT**: FAT12, FAT16, and FAT32 file systems
+//! - **ISO 9660**: CD-ROM file system - coming soon
+//! - **exFAT**: Extended FAT file system - coming soon
+//!
+//! ## Example
+//!
+//! ```rust,no_run
+//! use totalimage_territories::fat::FatTerritory;
+//! use totalimage_core::Territory;
+//! use std::fs::File;
+//!
+//! // Parse FAT filesystem from a partition
+//! let mut file = File::open("partition.img").unwrap();
+//! let territory = FatTerritory::parse(&mut file).unwrap();
+//!
+//! println!("Filesystem: {}", territory.identify());
+//! ```
 
-// Placeholder
+pub mod fat;
+
+pub use fat::FatTerritory;
