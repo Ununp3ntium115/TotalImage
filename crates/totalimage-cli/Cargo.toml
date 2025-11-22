@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 totalimage-core = { path = "../totalimage-core" }
+totalimage-pipeline = { path = "../totalimage-pipeline" }
 totalimage-vaults = { path = "../totalimage-vaults" }
 totalimage-zones = { path = "../totalimage-zones" }
 totalimage-territories = { path = "../totalimage-territories" }
