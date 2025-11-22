@@ -65,8 +65,21 @@ impl MbrPartitionType {
     /// Get the byte value of this partition type
     pub fn to_byte(self) -> u8 {
         match self {
+            Self::Empty => 0x00,
+            Self::Fat12 => 0x01,
+            Self::Fat16Small => 0x04,
+            Self::Extended => 0x05,
+            Self::Fat16 => 0x06,
+            Self::Ntfs => 0x07,
+            Self::Fat32Chs => 0x0B,
+            Self::Fat32Lba => 0x0C,
+            Self::Fat16Lba => 0x0E,
+            Self::ExtendedLba => 0x0F,
+            Self::LinuxSwap => 0x82,
+            Self::LinuxNative => 0x83,
+            Self::GptProtective => 0xEE,
+            Self::EfiSystem => 0xEF,
             Self::Unknown(b) => b,
-            _ => self as u8,
         }
     }
 
@@ -87,7 +100,7 @@ impl MbrPartitionType {
             Self::LinuxNative => "Linux",
             Self::GptProtective => "GPT Protective",
             Self::EfiSystem => "EFI System",
-            Self::Unknown(b) => return "Unknown",
+            Self::Unknown(_b) => return "Unknown",
         }
     }
 }
