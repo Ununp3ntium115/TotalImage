@@ -1,0 +1,76 @@
+[workspace]
+members = [
+    "crates/totalimage-core",
+    "crates/totalimage-pipeline",
+    "crates/totalimage-vaults",
+    "crates/totalimage-zones",
+    "crates/totalimage-territories",
+    "crates/totalimage-cli",
+    "crates/totalimage-web",
+]
+
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "GPL-3.0-or-later"
+authors = ["Total Liberation Collective"]
+repository = "https://github.com/Ununp3ntium115/TotalImage"
+
+[workspace.dependencies]
+# SHARED DEPENDENCIES
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# ASYNC
+tokio = { version = "1.35", features = ["full"] }
+async-trait = "0.1"
+
+# SERIALIZATION
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# I/O
+bytes = "1.5"
+memmap2 = "0.9"
+
+# CRYPTO
+md5 = "0.7"
+sha1 = "0.10"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+crc32fast = "1.4"
+
+# ENCODING
+encoding_rs = "0.8"
+
+# WEB
+axum = { version = "0.7", features = ["multipart"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+
+# DATABASE
+redb = "2.1"
+
+# DATETIME
+chrono = { version = "0.4", features = ["serde"] }
+
+# CLI
+clap = { version = "4.4", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.dev.package."*"]
+opt-level = 2

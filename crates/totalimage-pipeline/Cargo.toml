@@ -1,0 +1,15 @@
+[package]
+name = "totalimage-pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+totalimage-core = { path = "../totalimage-core" }
+thiserror.workspace = true
+memmap2.workspace = true
+
+[dev-dependencies]
+tempfile = "3.8"

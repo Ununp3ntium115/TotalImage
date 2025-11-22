@@ -1,0 +1,15 @@
+[package]
+name = "totalimage-territories"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+totalimage-core = { path = "../totalimage-core" }
+totalimage-pipeline = { path = "../totalimage-pipeline" }
+thiserror.workspace = true
+encoding_rs.workspace = true
+chrono.workspace = true
+serde.workspace = true
