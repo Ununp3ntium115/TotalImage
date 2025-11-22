@@ -1108,6 +1108,7 @@ dependencies = [
  "md5",
  "serde",
  "sha1",
+ "tempfile",
  "thiserror",
  "totalimage-core",
  "totalimage-pipeline",

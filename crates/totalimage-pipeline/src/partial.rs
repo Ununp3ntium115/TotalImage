@@ -1,7 +1,6 @@
 //! Partial pipeline - provides a window into a subset of a stream
 
 use std::io::{self, Read, Seek, SeekFrom};
-use totalimage_core::Result;
 
 /// A pipeline that exposes only a portion of an underlying stream.
 ///

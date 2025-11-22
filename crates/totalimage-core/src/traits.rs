@@ -89,13 +89,13 @@ pub trait DirectoryCell: Send + Sync {
 }
 
 /// Combined trait for Read + Seek
-pub trait ReadSeek: Read + Seek + Send {}
+pub trait ReadSeek: Read + Seek + Send + Sync {}
 
-/// Blanket implementation for any type that implements Read + Seek
-impl<T: Read + Seek + Send> ReadSeek for T {}
+/// Blanket implementation for any type that implements Read + Seek + Sync
+impl<T: Read + Seek + Send + Sync> ReadSeek for T {}
 
 /// Combined trait for Read + Write + Seek
-pub trait ReadWriteSeek: Read + Write + Seek + Send {}
+pub trait ReadWriteSeek: Read + Write + Seek + Send + Sync {}
 
-/// Blanket implementation for any type that implements Read + Write + Seek
-impl<T: Read + Write + Seek + Send> ReadWriteSeek for T {}
+/// Blanket implementation for any type that implements Read + Write + Seek + Sync
+impl<T: Read + Write + Seek + Send + Sync> ReadWriteSeek for T {}
