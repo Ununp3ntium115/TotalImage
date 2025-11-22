@@ -46,7 +46,13 @@ fn main() {
                 eprintln!("Usage: {} list <image_file> [--zone INDEX]", args[0]);
                 process::exit(1);
             }
-            let zone_index = parse_zone_arg(&args);
+            let zone_index = match parse_zone_arg(&args) {
+                Ok(idx) => idx,
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    process::exit(1);
+                }
+            };
             if let Err(e) = cmd_list(&args[2], zone_index) {
                 eprintln!("Error: {}", e);
                 process::exit(1);
@@ -57,7 +63,13 @@ fn main() {
                 eprintln!("Usage: {} extract <image_file> <file_path> [--zone INDEX] [--output PATH]", args[0]);
                 process::exit(1);
             }
-            let zone_index = parse_zone_arg(&args);
+            let zone_index = match parse_zone_arg(&args) {
+                Ok(idx) => idx,
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    process::exit(1);
+                }
+            };
             let output_path = parse_output_arg(&args);
             if let Err(e) = cmd_extract(&args[2], &args[3], zone_index, output_path.as_deref()) {
                 eprintln!("Error: {}", e);
@@ -220,13 +232,16 @@ fn cmd_zones(image_path: &str) -> Result<()> {
     Ok(())
 }
 
-fn parse_zone_arg(args: &[String]) -> usize {
+fn parse_zone_arg(args: &[String]) -> Result<usize> {
     for i in 0..args.len() - 1 {
         if args[i] == "--zone" {
-            return args[i + 1].parse().unwrap_or(0);
+            return args[i + 1].parse()
+                .map_err(|_| totalimage_core::Error::InvalidOperation(
+                    format!("Invalid zone index: '{}' (expected non-negative integer)", args[i + 1])
+                ));
         }
     }
-    0
+    Ok(0) // Default to zone 0 if --zone not provided
 }
 
 fn parse_output_arg(args: &[String]) -> Option<String> {

@@ -33,15 +33,90 @@ impl MmapPipeline {
     /// # Errors
     ///
     /// Returns an error if the file cannot be opened or mapped
+    ///
+    /// # Security
+    ///
+    /// Validates file before mapping:
+    /// - Ensures file is a regular file (not device, pipe, etc.)
+    /// - Checks file size is within reasonable limits
+    /// - Uses read-only mapping to prevent accidental writes
+    ///
+    /// # Safety
+    ///
+    /// Uses `unsafe` for memory mapping because:
+    /// - The OS guarantees memory safety for valid file descriptors
+    /// - We validate the file is a regular file before mapping
+    /// - We use MAP_PRIVATE (read-only) to prevent modification
+    /// - File must not be truncated during access (caller responsibility)
     pub fn open(path: &Path) -> io::Result<Self> {
         let file = File::open(path)?;
+        let metadata = file.metadata()?;
+
+        // Validate file is a regular file (not device, pipe, directory, etc.)
+        if !metadata.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Only regular files can be memory-mapped"
+            ));
+        }
+
+        // Check file size is within reasonable limits for memory mapping
+        use totalimage_core::MAX_MMAP_SIZE;
+        if metadata.len() > MAX_MMAP_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "File size {} exceeds memory mapping limit {} (16 GB)",
+                    metadata.len(),
+                    MAX_MMAP_SIZE
+                )
+            ));
+        }
+
+        // SAFETY: We've validated:
+        // 1. File is a regular file (not a device or pipe)
+        // 2. File size is reasonable and won't exhaust memory
+        // 3. File descriptor is valid (File::open succeeded)
+        // 4. Mmap uses MAP_PRIVATE by default (read-only, no write-through)
         let mmap = unsafe { Mmap::map(&file)? };
 
         Ok(Self { mmap, position: 0 })
     }
 
     /// Create a memory-mapped pipeline from an existing file
+    ///
+    /// # Security
+    ///
+    /// Validates file before mapping (same checks as `open()`)
+    ///
+    /// # Safety
+    ///
+    /// See `open()` for safety documentation
     pub fn from_file(file: &File) -> io::Result<Self> {
+        let metadata = file.metadata()?;
+
+        // Validate file is a regular file
+        if !metadata.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Only regular files can be memory-mapped"
+            ));
+        }
+
+        // Check file size limit
+        use totalimage_core::MAX_MMAP_SIZE;
+        if metadata.len() > MAX_MMAP_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "File size {} exceeds memory mapping limit {} (16 GB)",
+                    metadata.len(),
+                    MAX_MMAP_SIZE
+                )
+            ));
+        }
+
+        // SAFETY: Same guarantees as open()
         let mmap = unsafe { Mmap::map(file)? };
         Ok(Self { mmap, position: 0 })
     }

@@ -27,6 +27,9 @@ pub const MAX_FILE_EXTRACT_SIZE: u64 = 1024 * 1024 * 1024;
 /// Maximum cluster chain length (prevents infinite loops)
 pub const MAX_CLUSTER_CHAIN_LENGTH: usize = 1_000_000;
 
+/// Maximum file size for memory mapping (16 GB - practical limit for most systems)
+pub const MAX_MMAP_SIZE: u64 = 16 * 1024 * 1024 * 1024;
+
 /// Validate that a size is within allocation limits
 ///
 /// # Security
