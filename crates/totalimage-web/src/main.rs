@@ -3,30 +3,74 @@
 //! Provides HTTP API endpoints for vault inspection, zone enumeration,
 //! and filesystem analysis.
 
+mod cache;
+
 use axum::{
-    extract::Query,
+    extract::{Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
     routing::get,
     Router,
 };
+use cache::MetadataCache;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
 use totalimage_core::{Result as TotalImageResult, Territory, Vault, ZoneTable};
 use totalimage_vaults::{RawVault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
+
+/// Shared application state
+#[derive(Clone)]
+struct AppState {
+    cache: Arc<MetadataCache>,
+}
 
 #[tokio::main]
 async fn main() {
     // Initialize tracing
     tracing_subscriber::fmt::init();
 
+    // Initialize metadata cache
+    let cache_dir = std::env::var("TOTALIMAGE_CACHE_DIR")
+        .unwrap_or_else(|_| {
+            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+            format!("{}/.cache/totalimage", home)
+        });
+    let cache_path = std::path::PathBuf::from(cache_dir).join("metadata.redb");
+
+    let cache = match MetadataCache::new(cache_path.clone()) {
+        Ok(cache) => {
+            tracing::info!("Metadata cache initialized at {}", cache_path.display());
+            if let Ok(stats) = cache.stats() {
+                tracing::info!(
+                    "Cache stats: {} vault_info, {} zones, {} dir_listings, ~{} bytes",
+                    stats.vault_info_count,
+                    stats.zone_table_count,
+                    stats.dir_listings_count,
+                    stats.estimated_size_bytes
+                );
+            }
+            Arc::new(cache)
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize cache: {}", e);
+            tracing::warn!("Continuing without cache");
+            // Create a dummy cache in temp dir
+            let temp_path = std::env::temp_dir().join("totalimage_cache.redb");
+            Arc::new(MetadataCache::new(temp_path).expect("Failed to create temp cache"))
+        }
+    };
+
+    let state = AppState { cache };
+
     // Build application routes
     let app = Router::new()
         .route("/health", get(health))
         .route("/api/vault/info", get(vault_info))
-        .route("/api/vault/zones", get(vault_zones));
+        .route("/api/vault/zones", get(vault_zones))
+        .with_state(state);
 
     // Run server
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
@@ -55,7 +99,7 @@ struct VaultQuery {
 }
 
 /// Vault information response
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct VaultInfoResponse {
     path: String,
     vault_type: String,
@@ -63,7 +107,7 @@ struct VaultInfoResponse {
     partition_table: Option<PartitionTableInfo>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct PartitionTableInfo {
     table_type: String,
     partition_count: usize,
@@ -72,14 +116,14 @@ struct PartitionTableInfo {
 }
 
 /// Zone information response
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct VaultZonesResponse {
     path: String,
     partition_table: String,
     zones: Vec<ZoneInfo>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct ZoneInfo {
     index: usize,
     offset: u64,
@@ -88,9 +132,27 @@ struct ZoneInfo {
 }
 
 /// GET /api/vault/info?path=<image_file>
-async fn vault_info(Query(params): Query<VaultQuery>) -> impl IntoResponse {
+async fn vault_info(
+    State(state): State<AppState>,
+    Query(params): Query<VaultQuery>,
+) -> impl IntoResponse {
+    // Check cache first
+    if let Ok(Some(cached_info)) = state.cache.get_vault_info::<VaultInfoResponse>(&params.path) {
+        tracing::info!("Cache HIT for vault_info: {}", params.path);
+        return (StatusCode::OK, Json(cached_info)).into_response();
+    }
+
+    tracing::info!("Cache MISS for vault_info: {}", params.path);
+
+    // Parse vault
     match get_vault_info(&params.path) {
-        Ok(info) => (StatusCode::OK, Json(info)).into_response(),
+        Ok(info) => {
+            // Store in cache
+            if let Err(e) = state.cache.set_vault_info(&params.path, &info) {
+                tracing::warn!("Failed to cache vault_info: {}", e);
+            }
+            (StatusCode::OK, Json(info)).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
@@ -102,9 +164,27 @@ async fn vault_info(Query(params): Query<VaultQuery>) -> impl IntoResponse {
 }
 
 /// GET /api/vault/zones?path=<image_file>
-async fn vault_zones(Query(params): Query<VaultQuery>) -> impl IntoResponse {
+async fn vault_zones(
+    State(state): State<AppState>,
+    Query(params): Query<VaultQuery>,
+) -> impl IntoResponse {
+    // Check cache first
+    if let Ok(Some(cached_zones)) = state.cache.get_zones::<VaultZonesResponse>(&params.path) {
+        tracing::info!("Cache HIT for zones: {}", params.path);
+        return (StatusCode::OK, Json(cached_zones)).into_response();
+    }
+
+    tracing::info!("Cache MISS for zones: {}", params.path);
+
+    // Parse vault zones
     match get_vault_zones(&params.path) {
-        Ok(zones) => (StatusCode::OK, Json(zones)).into_response(),
+        Ok(zones) => {
+            // Store in cache
+            if let Err(e) = state.cache.set_zones(&params.path, &zones) {
+                tracing::warn!("Failed to cache zones: {}", e);
+            }
+            (StatusCode::OK, Json(zones)).into_response()
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({
