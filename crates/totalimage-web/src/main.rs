@@ -51,6 +51,10 @@ async fn main() {
                     stats.estimated_size_bytes
                 );
             }
+            // TODO: Implement automatic cache maintenance
+            // - Spawn background task for periodic cleanup_expired()
+            // - Call evict_if_needed() when cache size exceeds MAX_CACHE_SIZE
+            // - Consider using tokio::spawn with interval timer
             Arc::new(cache)
         }
         Err(e) => {
@@ -63,6 +67,15 @@ async fn main() {
     };
 
     let state = AppState { cache };
+
+    // TODO: Production hardening (SEC-007)
+    // - Add rate limiting: tower::limit::RateLimitLayer
+    // - Add request timeouts: tower::timeout::TimeoutLayer (30s)
+    // - Add concurrency limits: tower::limit::ConcurrencyLimitLayer (10)
+    // - Configure CORS policy for API access
+    // - Add request size limits (10 MB max)
+    // - Enable TLS/HTTPS support
+    // See: steering/GAP-ANALYSIS.md#SEC-007
 
     // Build application routes
     let app = Router::new()

@@ -244,12 +244,20 @@ impl DirectoryCell for IsoRootDirectory {
     }
 
     fn list_occupants(&self) -> Result<Vec<OccupantInfo>> {
+        // TODO: Full directory listing implementation
+        // - Parse directory records from root directory extent
+        // - Handle continuation extents for large directories
+        // - Support Rock Ridge extensions for Unix permissions
         // Simplified: return empty list
         // Full implementation would need access to the stream to read directory entries
         Ok(Vec::new())
     }
 
     fn enter(&self, _name: &str) -> Result<Box<dyn DirectoryCell>> {
+        // TODO: Subdirectory navigation implementation
+        // - Search directory entries for matching name
+        // - Load subdirectory extent
+        // - Return new DirectoryCell for subdirectory
         // Simplified: return error
         Err(Error::not_found("Subdirectory not found".to_string()))
     }
