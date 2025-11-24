@@ -136,7 +136,7 @@ mod tests {
         let cursor = Cursor::new(data);
 
         // Create a window from 20-29 (10 bytes)
-        let mut partial = PartialPipeline::new(cursor, 20, 10).unwrap();
+        let partial = PartialPipeline::new(cursor, 20, 10).unwrap();
 
         assert_eq!(partial.start(), 20);
         assert_eq!(partial.length(), 10);
@@ -222,7 +222,7 @@ mod tests {
 
         // Seek before beginning
         let result = partial.seek(SeekFrom::Start(0));
-        partial.seek(SeekFrom::Current(-5));
+        let _ = partial.seek(SeekFrom::Current(-5)); // Intentionally ignored - testing subsequent operations
         assert!(result.is_ok()); // SeekFrom::Start(0) is valid
 
         // Seek beyond end

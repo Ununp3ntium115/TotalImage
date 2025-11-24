@@ -13,6 +13,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const CACHE_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 
 /// Maximum cache size in bytes (100 MB)
+#[allow(dead_code)] // Used by evict_if_needed() - reserved for future automatic eviction
 const MAX_CACHE_SIZE: u64 = 100 * 1024 * 1024;
 
 /// Table definitions
@@ -165,6 +166,7 @@ impl MetadataCache {
     }
 
     /// Get directory listing from cache
+    #[allow(dead_code)] // Reserved for future directory caching feature
     pub fn get_dir_listing<T>(&self, path: &str) -> Result<Option<T>, Box<dyn std::error::Error>>
     where
         T: for<'de> Deserialize<'de>,
@@ -189,6 +191,7 @@ impl MetadataCache {
     }
 
     /// Set directory listing in cache
+    #[allow(dead_code)] // Reserved for future directory caching feature
     pub fn set_dir_listing<T>(
         &self,
         path: &str,
@@ -213,6 +216,7 @@ impl MetadataCache {
     }
 
     /// Clean up expired entries from all tables
+    #[allow(dead_code)] // Reserved for future automatic cache maintenance
     pub fn cleanup_expired(&self) -> Result<usize, Box<dyn std::error::Error>> {
         let db = self.db.lock().unwrap();
         let mut removed_count = 0;
@@ -234,6 +238,7 @@ impl MetadataCache {
     }
 
     /// Helper to clean up a specific table
+    #[allow(dead_code)] // Used by cleanup_expired() - reserved for future automatic maintenance
     fn cleanup_table(
         &self,
         db: &Database,
@@ -305,6 +310,7 @@ impl MetadataCache {
     }
 
     /// Evict oldest entries if cache is too large (LRU eviction)
+    #[allow(dead_code)] // Reserved for future automatic cache size management
     pub fn evict_if_needed(&self) -> Result<(), Box<dyn std::error::Error>> {
         let db = self.db.lock().unwrap();
         let size = self.cache_size_with_db(&db)?;
@@ -325,6 +331,7 @@ impl MetadataCache {
     }
 
     /// Evict oldest entries by percentage
+    #[allow(dead_code)] // Used by evict_if_needed() - reserved for future LRU eviction
     fn evict_oldest(&self, percentage: f64) -> Result<usize, Box<dyn std::error::Error>> {
         let db = self.db.lock().unwrap();
         let mut all_entries = Vec::new();

@@ -210,7 +210,7 @@ mod tests {
         tmpfile.write_all(&data).unwrap();
         tmpfile.flush().unwrap();
 
-        let mut pipeline = MmapPipeline::open(tmpfile.path()).unwrap();
+        let pipeline = MmapPipeline::open(tmpfile.path()).unwrap();
 
         assert_eq!(pipeline.len(), 100);
         assert_eq!(pipeline.position(), 0);

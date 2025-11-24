@@ -234,6 +234,7 @@ impl Territory for IsoTerritory {
 
 /// ISO-9660 root directory cell
 struct IsoRootDirectory {
+    #[allow(dead_code)] // Reserved for future full implementation
     root: DirectoryRecord,
 }
 
