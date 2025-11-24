@@ -7,6 +7,7 @@ members = [
     "crates/totalimage-territories",
     "crates/totalimage-cli",
     "crates/totalimage-web",
+    "crates/totalimage-mcp",
 ]
 
 resolver = "2"
@@ -52,6 +53,7 @@ encoding_rs = "0.8"
 axum = { version = "0.7", features = ["multipart"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["fs", "cors"] }
+reqwest = { version = "0.11", features = ["json"] }
 
 # DATABASE
 redb = "2.1"
