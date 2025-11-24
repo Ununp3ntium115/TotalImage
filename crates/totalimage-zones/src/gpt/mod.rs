@@ -57,6 +57,13 @@ impl GptZoneTable {
             Error::invalid_zone_table("Invalid GPT header signature".to_string())
         })?;
 
+        // Verify header CRC32 (SEC-006: Checksum enforcement)
+        if !header.verify_header_crc32(&header_bytes) {
+            return Err(Error::ChecksumVerification(
+                "GPT header CRC32 verification failed".to_string()
+            ));
+        }
+
         // Read partition entries
         let entries_lba = header.partition_entries_lba;
         let entries_offset = entries_lba * sector_size as u64;
@@ -65,14 +72,27 @@ impl GptZoneTable {
 
         stream.seek(SeekFrom::Start(entries_offset))?;
 
+        // Read all partition entries at once for CRC32 verification
+        let total_entries_size = num_entries as usize * entry_size;
+        let mut all_entries_bytes = vec![0u8; total_entries_size];
+        stream.read_exact(&mut all_entries_bytes)?;
+
+        // Verify partition entries CRC32 (SEC-006: Checksum enforcement)
+        if !header.verify_partition_entries_crc32(&all_entries_bytes) {
+            return Err(Error::ChecksumVerification(
+                "GPT partition entries CRC32 verification failed".to_string()
+            ));
+        }
+
+        // Parse individual partition entries
         let mut zones = Vec::new();
 
         for i in 0..num_entries {
-            // Read partition entry
-            let mut entry_bytes = vec![0u8; entry_size];
-            stream.read_exact(&mut entry_bytes)?;
+            let entry_start = i as usize * entry_size;
+            let entry_end = entry_start + entry_size;
+            let entry_bytes = &all_entries_bytes[entry_start..entry_end];
 
-            let entry = GptPartitionEntry::from_bytes(&entry_bytes);
+            let entry = GptPartitionEntry::from_bytes(entry_bytes);
 
             // Skip unused partitions
             if entry.is_unused() {
@@ -222,6 +242,20 @@ mod tests {
             disk[entry_offset + 56 + i * 2 + 1] = bytes[1];
         }
 
+        // Calculate and set partition entries CRC32
+        let entries_size = 128 * 128; // num_entries * entry_size
+        let entries_crc = crc32fast::hash(&disk[entries_offset..entries_offset + entries_size]);
+        disk[header_offset + 88..header_offset + 92].copy_from_slice(&entries_crc.to_le_bytes());
+
+        // Calculate and set header CRC32 (with CRC32 field zeroed)
+        let mut header_for_crc = disk[header_offset..header_offset + 92].to_vec();
+        header_for_crc[16] = 0;
+        header_for_crc[17] = 0;
+        header_for_crc[18] = 0;
+        header_for_crc[19] = 0;
+        let header_crc = crc32fast::hash(&header_for_crc);
+        disk[header_offset + 16..header_offset + 20].copy_from_slice(&header_crc.to_le_bytes());
+
         disk
     }
 
@@ -262,6 +296,33 @@ mod tests {
         let result = GptZoneTable::parse(&mut cursor, 512);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_gpt_header_crc32_validation() {
+        let mut gpt_data = create_test_gpt();
+        // Corrupt a byte in the header (but not signature or CRC32 field)
+        gpt_data[512 + 50] = 0xFF; // Modify first_usable_lba
+
+        let mut cursor = Cursor::new(gpt_data);
+        let result = GptZoneTable::parse(&mut cursor, 512);
+
+        assert!(result.is_err());
+        assert!(matches!(result, Err(Error::ChecksumVerification(_))));
+    }
+
+    #[test]
+    fn test_gpt_partition_entries_crc32_validation() {
+        let mut gpt_data = create_test_gpt();
+        // Corrupt a byte in the partition entries
+        let entries_offset = 2 * 512;
+        gpt_data[entries_offset + 100] = 0xFF;
+
+        let mut cursor = Cursor::new(gpt_data);
+        let result = GptZoneTable::parse(&mut cursor, 512);
+
+        assert!(result.is_err());
+        assert!(matches!(result, Err(Error::ChecksumVerification(_))));
     }
 
     #[test]

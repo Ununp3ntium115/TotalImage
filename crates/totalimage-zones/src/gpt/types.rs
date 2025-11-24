@@ -267,6 +267,53 @@ impl GptHeader {
             partition_entries_crc32,
         })
     }
+
+    /// Verify the header CRC32 checksum
+    ///
+    /// # Security
+    /// Validates header integrity to detect corruption or tampering
+    ///
+    /// # Arguments
+    /// * `header_bytes` - The raw header bytes (with CRC32 field zeroed for calculation)
+    pub fn verify_header_crc32(&self, header_bytes: &[u8]) -> bool {
+        if header_bytes.len() < self.header_size as usize {
+            return false;
+        }
+
+        // Create a copy of header bytes with CRC32 field zeroed
+        let mut header_for_crc = header_bytes[..self.header_size as usize].to_vec();
+
+        // Zero out the CRC32 field (bytes 16-19)
+        header_for_crc[16] = 0;
+        header_for_crc[17] = 0;
+        header_for_crc[18] = 0;
+        header_for_crc[19] = 0;
+
+        // Calculate CRC32
+        let calculated_crc = crc32fast::hash(&header_for_crc);
+
+        calculated_crc == self.header_crc32
+    }
+
+    /// Verify the partition entries array CRC32 checksum
+    ///
+    /// # Security
+    /// Validates partition table integrity
+    ///
+    /// # Arguments
+    /// * `partition_entries_bytes` - The raw partition entries array
+    pub fn verify_partition_entries_crc32(&self, partition_entries_bytes: &[u8]) -> bool {
+        let expected_size = self.num_partition_entries as usize * self.partition_entry_size as usize;
+
+        if partition_entries_bytes.len() < expected_size {
+            return false;
+        }
+
+        // Calculate CRC32 over the partition entries
+        let calculated_crc = crc32fast::hash(&partition_entries_bytes[..expected_size]);
+
+        calculated_crc == self.partition_entries_crc32
+    }
 }
 
 #[cfg(test)]
