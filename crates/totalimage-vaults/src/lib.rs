@@ -33,8 +33,10 @@
 //! println!("Size: {} bytes", vhd.length());
 //! ```
 
+pub mod e01;
 pub mod raw;
 pub mod vhd;
 
+pub use e01::E01Vault;
 pub use raw::{RawVault, VaultConfig};
 pub use vhd::VhdVault;

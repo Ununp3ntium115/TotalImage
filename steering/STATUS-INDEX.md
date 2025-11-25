@@ -10,7 +10,7 @@
 | Aspect | Status | Location |
 |--------|--------|----------|
 | **Rust Crates** | 10/10 Complete | `crates/` |
-| **Tests** | 121+ passing | All crates |
+| **Tests** | 131+ passing | All crates |
 | **MCP Server** | ✅ Complete, dual-mode | `crates/totalimage-mcp/` |
 | **Fire Marshal Framework** | ✅ Complete | `crates/fire-marshal/` |
 | **Disk Acquisition** | ✅ Complete | `crates/totalimage-acquire/` |
@@ -18,6 +18,7 @@
 | **FAT LFN/Subdirs** | ✅ Complete | `crates/totalimage-territories/` |
 | **exFAT Filesystem** | ✅ Complete | `crates/totalimage-territories/` |
 | **VHD Image Creation** | ✅ Complete | `crates/totalimage-acquire/` |
+| **E01 Forensic Format** | ✅ Complete | `crates/totalimage-vaults/` |
 | **Security Hardening** | Phase 1 complete | `SECURITY.md` |
 | **PYRO Integration Design** | Complete | `steering/PYRO-INTEGRATION-DESIGN.md` |
 | **WinPE Bootable USB** | Design pending | See Section 11 |
@@ -81,19 +82,22 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 | File | Lines | Function |
 |------|-------|----------|
-| `lib.rs` | 40 | Factory pattern, VaultConfig |
+| `lib.rs` | 43 | Factory pattern, VaultConfig |
 | `raw.rs` | 226 | Raw sector images (.img, .dsk) |
 | `vhd/mod.rs` | 751 | VHD Fixed & Dynamic support |
 | `vhd/types.rs` | 530 | VhdFooter, DynamicHeader, BAT |
+| `e01/mod.rs` | 380 | E01 forensic format support |
+| `e01/types.rs` | 340 | E01 headers, sections, entries |
 
 **Supported Formats:**
 - ✅ Raw Sector Images (.img, .dsk, .iso)
 - ✅ VHD Fixed (direct passthrough)
 - ✅ VHD Dynamic (BAT-based sparse blocks)
+- ✅ E01 (EnCase) forensic format (read-only)
 - ❌ VHD Differencing (parent chains)
 - ❌ NHD, IMZ, Anex86, PCjs
 
-**Tests:** 30 passing (7 Raw + 23 VHD)
+**Tests:** 40 passing (7 Raw + 23 VHD + 10 E01)
 
 ---
 
@@ -331,7 +335,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 |-------|------------|-------------|---------|
 | totalimage-core | 4 ✅ | ❌ | ❌ |
 | totalimage-pipeline | 9 ✅ | ❌ | ❌ |
-| totalimage-vaults | 30 ✅ | ❌ | ❌ |
+| totalimage-vaults | 40 ✅ | ❌ | ❌ |
 | totalimage-zones | 20 ✅ | ❌ | ❌ |
 | totalimage-territories | 36 ✅ | ❌ | ❌ |
 | totalimage-acquire | 15 ✅ | ❌ | ❌ |
@@ -340,7 +344,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 | totalimage-mcp | ❌ | ❌ | ❌ |
 | fire-marshal | 7 ✅ | ❌ | ❌ |
 
-**Total:** 121 unit tests passing
+**Total:** 131 unit tests passing
 
 ---
 
@@ -418,7 +422,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 | ~~Node-RED contrib package~~ | ~~8 hours~~ | ✅ Complete |
 | Fuzzing harness | 4 hours | Security testing |
 | ~~exFAT filesystem~~ | ~~16 hours~~ | ✅ Complete |
-| E01 format support | 16 hours | Forensic format |
+| ~~E01 format support~~ | ~~16 hours~~ | ✅ Complete |
 | Web cache test deadlock | 4 hours | Test reliability |
 
 ### P3 - Nice to Have
@@ -579,8 +583,9 @@ curl http://127.0.0.1:3000/health
 ### Medium-Term (In Progress)
 1. [x] Add VHD image creation
 2. [x] Implement exFAT filesystem
-3. [ ] E01/AFF4 format support
+3. [x] E01 forensic format support (read-only)
 4. [ ] Add differencing VHD support
+5. [ ] AFF4 format support
 
 ### Long-Term (FTK Imager Replacement)
 1. [ ] Implement WinPE bootable USB creation
@@ -604,6 +609,7 @@ curl http://127.0.0.1:3000/health
 - ✅ Disk acquisition (raw): **Complete** (dd-equivalent with hashing)
 - ✅ VHD image creation: **Complete** (Fixed & Dynamic formats)
 - ✅ exFAT filesystem: **Complete** (directory listing, file extraction)
+- ✅ E01 forensic format: **Complete** (read-only, zlib decompression)
 - ⚠️ WinPE bootable USB: **Design only** (FTK Imager replacement)
 - ⚠️ Production deployment: **Needs Docker, TLS**
 
@@ -612,9 +618,10 @@ curl http://127.0.0.1:3000/health
 2. ~~Implement disk acquisition~~ ✅ (raw + VHD)
 3. ~~Add VHD image creation~~ ✅ (Fixed + Dynamic)
 4. ~~Implement exFAT filesystem~~ ✅
-5. Implement WinPE bootable USB (32 hrs)
-6. Docker + TLS deployment (8 hrs)
-7. Integration testing (8 hrs)
+5. ~~Add E01 forensic format~~ ✅ (read-only)
+6. Implement WinPE bootable USB (32 hrs)
+7. Docker + TLS deployment (8 hrs)
+8. Integration testing (8 hrs)
 
 **Estimated Remaining Effort:** ~48 hours to full FTK Imager replacement
 
@@ -657,7 +664,7 @@ Anywhere FTK Imager was previously required, TotalImage can be used instead.
 | **Create raw disk images** | ✅ | ✅ | Complete |
 | **Create VHD images** | ✅ | ✅ | Complete |
 | **Create bootable WinPE USB** | ✅ | ❌ | P1 |
-| **E01 (EnCase) support** | ✅ | ❌ | P2 |
+| **E01 (EnCase) support** | ✅ | ✅ | Complete |
 | **AFF4 format support** | ✅ | ❌ | P2 |
 | List files (NTFS) | ✅ | ❌ | P2 |
 | List files (exFAT) | ✅ | ✅ | Complete |
