@@ -1,0 +1,22 @@
+[package]
+name = "totalimage-acquire"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Disk image acquisition and creation - FTK Imager functionality"
+keywords = ["disk-image", "forensics", "acquisition", "dd", "vhd"]
+
+[dependencies]
+totalimage-core = { path = "../totalimage-core" }
+totalimage-vaults = { path = "../totalimage-vaults" }
+thiserror.workspace = true
+md-5.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+hex.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"

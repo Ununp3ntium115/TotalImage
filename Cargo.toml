@@ -5,6 +5,7 @@ members = [
     "crates/totalimage-vaults",
     "crates/totalimage-zones",
     "crates/totalimage-territories",
+    "crates/totalimage-acquire",
     "crates/totalimage-cli",
     "crates/totalimage-web",
     "crates/totalimage-mcp",
@@ -43,9 +44,12 @@ memmap2 = "0.9"
 
 # CRYPTO
 md5 = "0.7"
+md-5 = "0.10"
 sha1 = "0.10"
+sha2 = "0.10"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 crc32fast = "1.4"
+hex = "0.4"
 
 # ENCODING
 encoding_rs = "0.8"

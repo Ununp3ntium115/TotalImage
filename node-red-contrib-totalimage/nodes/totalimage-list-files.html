@@ -1,0 +1,83 @@
+<script type="text/javascript">
+    RED.nodes.registerType('totalimage-list-files', {
+        category: 'TotalImage',
+        color: '#4B8BBE',
+        defaults: {
+            name: { value: '' },
+            server: { value: '', type: 'totalimage-config', required: true },
+            imagePath: { value: '' },
+            zoneIndex: { value: 0 },
+            directory: { value: '' }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: 'font-awesome/fa-folder-open',
+        label: function() {
+            return this.name || 'list files';
+        },
+        paletteLabel: 'list files'
+    });
+</script>
+
+<script type="text/html" data-template-name="totalimage-list-files">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+        <input type="text" id="node-input-server">
+    </div>
+    <div class="form-row">
+        <label for="node-input-imagePath"><i class="fa fa-file"></i> Image Path</label>
+        <input type="text" id="node-input-imagePath" placeholder="/path/to/image.img">
+    </div>
+    <div class="form-row">
+        <label for="node-input-zoneIndex"><i class="fa fa-list-ol"></i> Partition</label>
+        <input type="number" id="node-input-zoneIndex" placeholder="0" min="0">
+    </div>
+    <div class="form-row">
+        <label for="node-input-directory"><i class="fa fa-folder"></i> Directory</label>
+        <input type="text" id="node-input-directory" placeholder="/ (root)">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="totalimage-list-files">
+    <p>Lists files in a disk image filesystem with support for subdirectories.</p>
+
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt class="optional">payload.path <span class="property-type">string</span></dt>
+        <dd>Path to the disk image file</dd>
+
+        <dt class="optional">payload.zoneIndex <span class="property-type">number</span></dt>
+        <dd>Partition index (0 for first partition)</dd>
+
+        <dt class="optional">payload.directory <span class="property-type">string</span></dt>
+        <dd>Directory path within the filesystem</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload.files <span class="property-type">array</span></dt>
+        <dd>Array of file objects with name, size, attributes, and is_directory flag</dd>
+
+        <dt>payload.zoneIndex <span class="property-type">number</span></dt>
+        <dd>Partition that was listed</dd>
+
+        <dt>payload.directory <span class="property-type">string</span></dt>
+        <dd>Directory that was listed</dd>
+    </dl>
+
+    <h3>Details</h3>
+    <p>Lists files and directories in a disk image filesystem.
+    Supports FAT12/16/32 (including long file names) and ISO-9660.</p>
+
+    <p>Each file object contains:</p>
+    <ul>
+        <li><code>name</code> - File or directory name</li>
+        <li><code>size</code> - File size in bytes</li>
+        <li><code>is_directory</code> - Boolean indicating if it's a directory</li>
+        <li><code>attributes</code> - File attributes</li>
+    </ul>
+</script>

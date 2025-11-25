@@ -4,7 +4,7 @@ pub mod types;
 
 use std::io::SeekFrom;
 use totalimage_core::{DirectoryCell, Error, OccupantInfo, ReadSeek, Result, Territory};
-use types::{BiosParameterBlock, DirectoryEntry, FatType};
+use types::{BiosParameterBlock, DirectoryEntry, FatType, LfnEntry};
 
 /// FAT file system territory
 ///
@@ -15,6 +15,8 @@ pub struct FatTerritory {
     bpb: BiosParameterBlock,
     fat_table: Vec<u8>,
     identifier: String,
+    /// FAT32 root directory cluster (0 for FAT12/16)
+    fat32_root_cluster: u32,
 }
 
 impl FatTerritory {
@@ -59,10 +61,19 @@ impl FatTerritory {
 
         let identifier = format!("{} filesystem", bpb.fat_type);
 
+        // For FAT32, read the root cluster from extended BPB
+        let fat32_root_cluster = if bpb.fat_type == FatType::Fat32 {
+            // Root cluster is at offset 44 in the boot sector
+            u32::from_le_bytes([boot_sector[44], boot_sector[45], boot_sector[46], boot_sector[47]])
+        } else {
+            0
+        };
+
         Ok(Self {
             bpb,
             fat_table,
             identifier,
+            fat32_root_cluster,
         })
     }
 
@@ -203,27 +214,110 @@ impl FatTerritory {
     pub fn read_root_directory(&self, stream: &mut dyn ReadSeek) -> Result<Vec<DirectoryEntry>> {
         if self.bpb.fat_type == FatType::Fat32 {
             // FAT32 has root directory in data region
-            return Ok(Vec::new());
+            return self.read_directory_from_cluster(stream, self.fat32_root_cluster);
         }
 
         stream.seek(SeekFrom::Start(self.bpb.root_dir_offset()? as u64))?;
 
         let mut entries = Vec::new();
         let mut entry_bytes = vec![0u8; DirectoryEntry::ENTRY_SIZE];
+        let mut pending_lfn: Vec<LfnEntry> = Vec::new();
 
         for _ in 0..self.bpb.root_entries {
             stream.read_exact(&mut entry_bytes)?;
 
             // Check for end of directory
-            if entry_bytes[0] == 0x00 {
+            if DirectoryEntry::is_end_of_directory(&entry_bytes) {
                 break;
             }
 
-            // Parse entry
-            if let Some(entry) = DirectoryEntry::from_bytes(&entry_bytes) {
-                // Skip long filename entries and volume labels
-                if !entry.is_long_name() && !entry.is_volume_label() {
+            // Skip deleted entries (but clear pending LFN)
+            if DirectoryEntry::is_deleted_entry(&entry_bytes) {
+                pending_lfn.clear();
+                continue;
+            }
+
+            // Check for LFN entry
+            if DirectoryEntry::is_lfn_entry(&entry_bytes) {
+                if let Some(lfn) = LfnEntry::from_bytes(&entry_bytes) {
+                    pending_lfn.push(lfn);
+                }
+                continue;
+            }
+
+            // Parse regular entry with any accumulated LFN entries
+            if let Some(entry) = DirectoryEntry::from_bytes_with_lfn(&entry_bytes, &pending_lfn) {
+                pending_lfn.clear();
+
+                // Skip volume labels
+                if !entry.is_volume_label() {
                     entries.push(entry);
+                }
+            } else {
+                pending_lfn.clear();
+            }
+        }
+
+        Ok(entries)
+    }
+
+    /// Read directory entries from a cluster chain (for subdirectories and FAT32 root)
+    pub fn read_directory_from_cluster(&self, stream: &mut dyn ReadSeek, start_cluster: u32) -> Result<Vec<DirectoryEntry>> {
+        if start_cluster < 2 {
+            return Ok(Vec::new());
+        }
+
+        let chain = self.get_cluster_chain(start_cluster);
+        if chain.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let cluster_size = self.bpb.bytes_per_cluster()? as usize;
+        let entries_per_cluster = cluster_size / DirectoryEntry::ENTRY_SIZE;
+
+        let mut entries = Vec::new();
+        let mut entry_bytes = vec![0u8; DirectoryEntry::ENTRY_SIZE];
+        let mut pending_lfn: Vec<LfnEntry> = Vec::new();
+
+        for cluster in chain {
+            let offset = self.cluster_to_offset(cluster)?;
+            stream.seek(SeekFrom::Start(offset))?;
+
+            for _ in 0..entries_per_cluster {
+                stream.read_exact(&mut entry_bytes)?;
+
+                // Check for end of directory
+                if DirectoryEntry::is_end_of_directory(&entry_bytes) {
+                    return Ok(entries);
+                }
+
+                // Skip deleted entries (but clear pending LFN)
+                if DirectoryEntry::is_deleted_entry(&entry_bytes) {
+                    pending_lfn.clear();
+                    continue;
+                }
+
+                // Check for LFN entry
+                if DirectoryEntry::is_lfn_entry(&entry_bytes) {
+                    if let Some(lfn) = LfnEntry::from_bytes(&entry_bytes) {
+                        pending_lfn.push(lfn);
+                    }
+                    continue;
+                }
+
+                // Parse regular entry with any accumulated LFN entries
+                if let Some(entry) = DirectoryEntry::from_bytes_with_lfn(&entry_bytes, &pending_lfn) {
+                    pending_lfn.clear();
+
+                    // Skip volume labels and . / .. entries
+                    if !entry.is_volume_label() {
+                        let short_name = &entry.short_name;
+                        if short_name != "." && short_name != ".." {
+                            entries.push(entry);
+                        }
+                    }
+                } else {
+                    pending_lfn.clear();
                 }
             }
         }
@@ -249,6 +343,65 @@ impl FatTerritory {
             .collect())
     }
 
+    /// List directory contents at a path
+    pub fn list_directory(&self, stream: &mut dyn ReadSeek, path: &str) -> Result<Vec<OccupantInfo>> {
+        let entries = self.read_directory_at_path(stream, path)?;
+
+        Ok(entries
+            .into_iter()
+            .map(|entry| OccupantInfo {
+                name: entry.name.clone(),
+                is_directory: entry.is_directory(),
+                size: entry.file_size as u64,
+                created: None,
+                modified: None,
+                accessed: None,
+                attributes: entry.attributes as u32,
+            })
+            .collect())
+    }
+
+    /// Read directory entries at a given path
+    pub fn read_directory_at_path(&self, stream: &mut dyn ReadSeek, path: &str) -> Result<Vec<DirectoryEntry>> {
+        let path = path.trim_matches('/').trim_matches('\\');
+
+        // Root directory
+        if path.is_empty() {
+            return self.read_root_directory(stream);
+        }
+
+        // Split path and navigate
+        let parts: Vec<&str> = path.split(|c| c == '/' || c == '\\').filter(|s| !s.is_empty()).collect();
+
+        let mut current_entries = self.read_root_directory(stream)?;
+
+        for (i, part) in parts.iter().enumerate() {
+            // Find the directory entry matching this path component
+            let dir_entry = current_entries
+                .iter()
+                .find(|e| e.name.eq_ignore_ascii_case(part) && (e.is_directory() || i == parts.len() - 1))
+                .ok_or_else(|| Error::not_found(format!("Path component not found: {}", part)))?;
+
+            if i == parts.len() - 1 {
+                // Last component - if it's a directory, read its contents
+                if dir_entry.is_directory() {
+                    return self.read_directory_from_cluster(stream, dir_entry.first_cluster());
+                } else {
+                    // It's a file - return error since we expected a directory
+                    return Err(Error::not_found(format!("Not a directory: {}", part)));
+                }
+            } else {
+                // Not the last component - must be a directory
+                if !dir_entry.is_directory() {
+                    return Err(Error::not_found(format!("Not a directory: {}", part)));
+                }
+                current_entries = self.read_directory_from_cluster(stream, dir_entry.first_cluster())?;
+            }
+        }
+
+        Ok(current_entries)
+    }
+
     /// Find a file in the root directory by name
     pub fn find_file_in_root(&self, stream: &mut dyn ReadSeek, name: &str) -> Result<DirectoryEntry> {
         let entries = self.read_root_directory(stream)?;
@@ -260,6 +413,44 @@ impl FatTerritory {
         }
 
         Err(Error::not_found(format!("File not found: {}", name)))
+    }
+
+    /// Find a file by path (supports subdirectories)
+    pub fn find_file_by_path(&self, stream: &mut dyn ReadSeek, path: &str) -> Result<DirectoryEntry> {
+        let path = path.trim_matches('/').trim_matches('\\');
+
+        if path.is_empty() {
+            return Err(Error::not_found("Empty path".to_string()));
+        }
+
+        let parts: Vec<&str> = path.split(|c| c == '/' || c == '\\').filter(|s| !s.is_empty()).collect();
+
+        if parts.is_empty() {
+            return Err(Error::not_found("Empty path".to_string()));
+        }
+
+        let mut current_entries = self.read_root_directory(stream)?;
+
+        for (i, part) in parts.iter().enumerate() {
+            let entry = current_entries
+                .iter()
+                .find(|e| e.name.eq_ignore_ascii_case(part))
+                .ok_or_else(|| Error::not_found(format!("Path component not found: {}", part)))?
+                .clone();
+
+            if i == parts.len() - 1 {
+                // Last component - this is what we're looking for
+                return Ok(entry);
+            } else {
+                // Not the last component - must be a directory
+                if !entry.is_directory() {
+                    return Err(Error::not_found(format!("Not a directory: {}", part)));
+                }
+                current_entries = self.read_directory_from_cluster(stream, entry.first_cluster())?;
+            }
+        }
+
+        Err(Error::not_found(format!("File not found: {}", path)))
     }
 
     /// Read file data from clusters
@@ -312,6 +503,17 @@ impl FatTerritory {
         }
 
         Ok(data)
+    }
+
+    /// Read file data by path (supports subdirectories)
+    pub fn read_file_by_path(&self, stream: &mut dyn ReadSeek, path: &str) -> Result<Vec<u8>> {
+        let entry = self.find_file_by_path(stream, path)?;
+
+        if entry.is_directory() {
+            return Err(Error::not_found(format!("Path is a directory: {}", path)));
+        }
+
+        self.read_file_data(stream, &entry)
     }
 }
 
@@ -499,6 +701,83 @@ mod tests {
         let entries = territory.read_root_directory(&mut cursor).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "TEST.TXT");
+    }
+
+    #[test]
+    fn test_subdirectory_navigation() {
+        let boot_sector = create_fat12_boot_sector();
+        let mut disk = vec![0u8; 1_474_560];
+        disk[0..512].copy_from_slice(&boot_sector);
+
+        // Set up FAT entries for cluster chain
+        let fat_offset = 512;
+        disk[fat_offset] = 0xF0;
+        disk[fat_offset + 1] = 0xFF;
+        disk[fat_offset + 2] = 0xFF;
+        // Cluster 2: EOF (for SUBDIR)
+        disk[fat_offset + 3] = 0xF8;
+        disk[fat_offset + 4] = 0x0F;
+
+        // Add a subdirectory entry in root directory
+        let root_offset = 512 + (2 * 9 * 512);
+        disk[root_offset..root_offset + 11].copy_from_slice(b"SUBDIR     ");
+        disk[root_offset + 11] = DirectoryEntry::ATTR_DIRECTORY;
+        disk[root_offset + 26] = 2; // First cluster low = 2
+        disk[root_offset + 27] = 0;
+
+        // Add a file inside the subdirectory (at cluster 2)
+        let data_offset = 16896; // Calculated from test_cluster_to_offset
+        disk[data_offset..data_offset + 11].copy_from_slice(b"NESTED  TXT");
+        disk[data_offset + 11] = 0x20; // Archive attribute
+
+        let mut cursor = Cursor::new(disk);
+        let territory = FatTerritory::parse(&mut cursor).unwrap();
+
+        // Test reading root directory
+        let root_entries = territory.read_root_directory(&mut cursor).unwrap();
+        assert_eq!(root_entries.len(), 1);
+        assert_eq!(root_entries[0].name, "SUBDIR");
+        assert!(root_entries[0].is_directory());
+
+        // Test navigating to subdirectory
+        let subdir_entries = territory.read_directory_at_path(&mut cursor, "SUBDIR").unwrap();
+        assert_eq!(subdir_entries.len(), 1);
+        assert_eq!(subdir_entries[0].name, "NESTED.TXT");
+    }
+
+    #[test]
+    fn test_find_file_by_path() {
+        let boot_sector = create_fat12_boot_sector();
+        let mut disk = vec![0u8; 1_474_560];
+        disk[0..512].copy_from_slice(&boot_sector);
+
+        // Set up FAT
+        let fat_offset = 512;
+        disk[fat_offset] = 0xF0;
+        disk[fat_offset + 1] = 0xFF;
+        disk[fat_offset + 2] = 0xFF;
+        disk[fat_offset + 3] = 0xF8;
+        disk[fat_offset + 4] = 0x0F;
+
+        // Add subdirectory in root
+        let root_offset = 512 + (2 * 9 * 512);
+        disk[root_offset..root_offset + 11].copy_from_slice(b"DOCS       ");
+        disk[root_offset + 11] = DirectoryEntry::ATTR_DIRECTORY;
+        disk[root_offset + 26] = 2;
+
+        // Add file in subdirectory
+        let data_offset = 16896;
+        disk[data_offset..data_offset + 11].copy_from_slice(b"README  TXT");
+        disk[data_offset + 11] = 0x20;
+        disk[data_offset + 28] = 100; // File size = 100 bytes
+
+        let mut cursor = Cursor::new(disk);
+        let territory = FatTerritory::parse(&mut cursor).unwrap();
+
+        // Find file by path
+        let entry = territory.find_file_by_path(&mut cursor, "DOCS/README.TXT").unwrap();
+        assert_eq!(entry.name, "README.TXT");
+        assert_eq!(entry.file_size, 100);
     }
 
     #[test]

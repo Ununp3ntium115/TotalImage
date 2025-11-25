@@ -347,8 +347,8 @@ mod tests {
         db.set("test_key", &"test_value".to_string(), "test_tool", "1.0")
             .unwrap();
 
-        // Wait a moment for expiration
-        std::thread::sleep(std::time::Duration::from_millis(10));
+        // Wait for expiration (TTL=0 means expires after 1 second)
+        std::thread::sleep(std::time::Duration::from_millis(1100));
 
         let result: Option<String> = db.get("test_key").unwrap();
         assert_eq!(result, None);

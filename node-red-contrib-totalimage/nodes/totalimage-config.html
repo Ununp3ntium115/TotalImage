@@ -1,0 +1,80 @@
+<script type="text/javascript">
+    RED.nodes.registerType('totalimage-config', {
+        category: 'config',
+        defaults: {
+            name: { value: '' },
+            host: { value: 'localhost', required: true },
+            port: { value: 3002, required: true, validate: RED.validators.number() },
+            protocol: { value: 'http' },
+            timeout: { value: 30000, validate: RED.validators.number() }
+        },
+        credentials: {
+            apiKey: { type: 'password' }
+        },
+        label: function() {
+            return this.name || `${this.host}:${this.port}`;
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="totalimage-config">
+    <div class="form-row">
+        <label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-config-input-name" placeholder="TotalImage Server">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-protocol"><i class="fa fa-lock"></i> Protocol</label>
+        <select id="node-config-input-protocol">
+            <option value="http">HTTP</option>
+            <option value="https">HTTPS</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-host"><i class="fa fa-server"></i> Host</label>
+        <input type="text" id="node-config-input-host" placeholder="localhost">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-port"><i class="fa fa-plug"></i> Port</label>
+        <input type="number" id="node-config-input-port" placeholder="3002">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+        <input type="number" id="node-config-input-timeout" placeholder="30000">
+    </div>
+    <div class="form-row">
+        <label for="node-config-input-apiKey"><i class="fa fa-key"></i> API Key</label>
+        <input type="password" id="node-config-input-apiKey" placeholder="Optional API key">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="totalimage-config">
+    <p>Configuration node for TotalImage MCP server connection.</p>
+
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Host <span class="property-type">string</span></dt>
+        <dd>The hostname or IP address of the TotalImage server</dd>
+
+        <dt>Port <span class="property-type">number</span></dt>
+        <dd>The port number (default: 3002 for MCP, 3001 for Fire Marshal)</dd>
+
+        <dt>Protocol <span class="property-type">string</span></dt>
+        <dd>HTTP or HTTPS protocol</dd>
+
+        <dt>Timeout <span class="property-type">number</span></dt>
+        <dd>Request timeout in milliseconds</dd>
+
+        <dt class="optional">API Key <span class="property-type">string</span></dt>
+        <dd>Optional API key for authentication</dd>
+    </dl>
+
+    <h3>Details</h3>
+    <p>This configuration node stores connection details for the TotalImage MCP
+    server or Fire Marshal tool orchestration framework.</p>
+
+    <p>Start the TotalImage MCP server with:</p>
+    <pre>./totalimage-mcp integrated --port 3002</pre>
+
+    <p>Or start Fire Marshal for multi-tool orchestration:</p>
+    <pre>./fire-marshal start --port 3001</pre>
+</script>

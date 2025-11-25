@@ -1,0 +1,41 @@
+{
+  "name": "node-red-contrib-totalimage",
+  "version": "0.1.0",
+  "description": "Node-RED nodes for TotalImage disk image analysis - FTK Imager alternative",
+  "keywords": [
+    "node-red",
+    "disk-image",
+    "forensics",
+    "totalimage",
+    "ftk-imager",
+    "vhd",
+    "fat",
+    "iso",
+    "partition"
+  ],
+  "author": "TotalImage Contributors",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Ununp3ntium115/TotalImage.git"
+  },
+  "node-red": {
+    "version": ">=2.0.0",
+    "nodes": {
+      "totalimage-analyze": "nodes/totalimage-analyze.js",
+      "totalimage-list-files": "nodes/totalimage-list-files.js",
+      "totalimage-extract": "nodes/totalimage-extract.js",
+      "totalimage-config": "nodes/totalimage-config.js"
+    }
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "node-red": "^3.0.0",
+    "node-red-node-test-helper": "^0.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

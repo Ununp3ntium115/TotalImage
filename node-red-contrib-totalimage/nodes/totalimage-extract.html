@@ -1,0 +1,92 @@
+<script type="text/javascript">
+    RED.nodes.registerType('totalimage-extract', {
+        category: 'TotalImage',
+        color: '#4B8BBE',
+        defaults: {
+            name: { value: '' },
+            server: { value: '', type: 'totalimage-config', required: true },
+            imagePath: { value: '' },
+            filePath: { value: '' },
+            outputPath: { value: '' },
+            zoneIndex: { value: 0 }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: 'font-awesome/fa-download',
+        label: function() {
+            return this.name || 'extract file';
+        },
+        paletteLabel: 'extract'
+    });
+</script>
+
+<script type="text/html" data-template-name="totalimage-extract">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+        <input type="text" id="node-input-server">
+    </div>
+    <div class="form-row">
+        <label for="node-input-imagePath"><i class="fa fa-file"></i> Image Path</label>
+        <input type="text" id="node-input-imagePath" placeholder="/path/to/image.img">
+    </div>
+    <div class="form-row">
+        <label for="node-input-filePath"><i class="fa fa-file-o"></i> File to Extract</label>
+        <input type="text" id="node-input-filePath" placeholder="DOCS/README.TXT">
+    </div>
+    <div class="form-row">
+        <label for="node-input-outputPath"><i class="fa fa-download"></i> Output Path</label>
+        <input type="text" id="node-input-outputPath" placeholder="/tmp/extracted/README.TXT">
+    </div>
+    <div class="form-row">
+        <label for="node-input-zoneIndex"><i class="fa fa-list-ol"></i> Partition</label>
+        <input type="number" id="node-input-zoneIndex" placeholder="0" min="0">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="totalimage-extract">
+    <p>Extracts a file from a disk image to a destination path.</p>
+
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt class="optional">payload.imagePath <span class="property-type">string</span></dt>
+        <dd>Path to the disk image file</dd>
+
+        <dt class="optional">payload.filePath <span class="property-type">string</span></dt>
+        <dd>Path to file within the disk image (e.g., "DOCS/README.TXT")</dd>
+
+        <dt class="optional">payload.outputPath <span class="property-type">string</span></dt>
+        <dd>Destination path for extracted file</dd>
+
+        <dt class="optional">payload.zoneIndex <span class="property-type">number</span></dt>
+        <dd>Partition index containing the file</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload.success <span class="property-type">boolean</span></dt>
+        <dd>True if extraction succeeded</dd>
+
+        <dt>payload.outputPath <span class="property-type">string</span></dt>
+        <dd>Path where file was extracted</dd>
+
+        <dt>payload.result <span class="property-type">object</span></dt>
+        <dd>Extraction result details</dd>
+    </dl>
+
+    <h3>Details</h3>
+    <p>Extracts files from FAT12/16/32 and ISO-9660 filesystems.
+    The file path supports subdirectories using forward slashes.</p>
+
+    <h3>Example</h3>
+    <p>To extract a file from a subdirectory:</p>
+    <pre>msg.payload = {
+    imagePath: "/images/disk.img",
+    filePath: "WINDOWS/SYSTEM/CONFIG.SYS",
+    outputPath: "/tmp/CONFIG.SYS"
+};
+return msg;</pre>
+</script>

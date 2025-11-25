@@ -1,0 +1,99 @@
+<script type="text/javascript">
+    RED.nodes.registerType('totalimage-analyze', {
+        category: 'TotalImage',
+        color: '#4B8BBE',
+        defaults: {
+            name: { value: '' },
+            server: { value: '', type: 'totalimage-config', required: true },
+            imagePath: { value: '' },
+            deepScan: { value: false },
+            useCache: { value: true }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: 'file.svg',
+        label: function() {
+            return this.name || 'analyze disk image';
+        },
+        paletteLabel: 'analyze'
+    });
+</script>
+
+<script type="text/html" data-template-name="totalimage-analyze">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+        <input type="text" id="node-input-server">
+    </div>
+    <div class="form-row">
+        <label for="node-input-imagePath"><i class="fa fa-file"></i> Image Path</label>
+        <input type="text" id="node-input-imagePath" placeholder="/path/to/image.img">
+    </div>
+    <div class="form-row">
+        <label for="node-input-deepScan"><i class="fa fa-search"></i> Deep Scan</label>
+        <input type="checkbox" id="node-input-deepScan" style="width: auto;">
+        <span>Perform deep filesystem scan (slower)</span>
+    </div>
+    <div class="form-row">
+        <label for="node-input-useCache"><i class="fa fa-database"></i> Use Cache</label>
+        <input type="checkbox" id="node-input-useCache" style="width: auto;" checked>
+        <span>Use cached results if available</span>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="totalimage-analyze">
+    <p>Analyzes a disk image file and returns comprehensive information
+    about vault type, partitions, and filesystems.</p>
+
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt class="optional">payload.path <span class="property-type">string</span></dt>
+        <dd>Path to the disk image file (overrides configured path)</dd>
+
+        <dt class="optional">payload.deepScan <span class="property-type">boolean</span></dt>
+        <dd>Perform deep filesystem scan</dd>
+
+        <dt class="optional">payload.useCache <span class="property-type">boolean</span></dt>
+        <dd>Use cached results if available</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload.imagePath <span class="property-type">string</span></dt>
+        <dd>Path to the analyzed image</dd>
+
+        <dt>payload.analysis <span class="property-type">object</span></dt>
+        <dd>Analysis results including:
+            <ul>
+                <li><code>vault_type</code> - Image format (Raw, VHD, etc.)</li>
+                <li><code>partitions</code> - List of partitions found</li>
+                <li><code>filesystems</code> - Detected filesystems</li>
+                <li><code>integrity</code> - Validation results</li>
+            </ul>
+        </dd>
+
+        <dt>payload.timestamp <span class="property-type">string</span></dt>
+        <dd>ISO timestamp of analysis</dd>
+    </dl>
+
+    <h3>Details</h3>
+    <p>This node connects to the TotalImage MCP server to analyze disk images.
+    Supported formats include raw (.img, .dd), VHD, and ISO files.</p>
+
+    <p>The analysis returns information about:</p>
+    <ul>
+        <li>Container format (vault type)</li>
+        <li>Partition table (MBR/GPT)</li>
+        <li>Filesystems (FAT12/16/32, ISO-9660)</li>
+        <li>File listings</li>
+        <li>Integrity validation</li>
+    </ul>
+
+    <h3>References</h3>
+    <ul>
+        <li><a href="https://github.com/Ununp3ntium115/TotalImage">TotalImage GitHub</a></li>
+    </ul>
+</script>

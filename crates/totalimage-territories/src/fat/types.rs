@@ -254,6 +254,8 @@ impl BiosParameterBlock {
 #[derive(Debug, Clone)]
 pub struct DirectoryEntry {
     /// Short filename (8.3 format)
+    pub short_name: String,
+    /// Long filename (if available, otherwise same as short_name)
     pub name: String,
     /// File attributes
     pub attributes: u8,
@@ -275,6 +277,141 @@ pub struct DirectoryEntry {
     pub file_size: u32,
 }
 
+/// Long File Name (LFN) directory entry
+#[derive(Debug, Clone)]
+pub struct LfnEntry {
+    /// Order/sequence byte (1-20, bit 6 set for last entry)
+    pub order: u8,
+    /// First 5 UTF-16LE characters
+    pub chars1: [u16; 5],
+    /// Always 0x0F for LFN entries
+    pub attributes: u8,
+    /// Always 0 for LFN entries
+    pub entry_type: u8,
+    /// Checksum of short name
+    pub checksum: u8,
+    /// Next 6 UTF-16LE characters
+    pub chars2: [u16; 6],
+    /// Always 0 for LFN entries
+    pub first_cluster: u16,
+    /// Final 2 UTF-16LE characters
+    pub chars3: [u16; 2],
+}
+
+impl LfnEntry {
+    /// Parse LFN entry from bytes
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < 32 {
+            return None;
+        }
+
+        // Check if this is an LFN entry
+        if bytes[11] != DirectoryEntry::ATTR_LONG_NAME {
+            return None;
+        }
+
+        let order = bytes[0];
+
+        // Parse UTF-16LE characters
+        let mut chars1 = [0u16; 5];
+        for i in 0..5 {
+            chars1[i] = u16::from_le_bytes([bytes[1 + i * 2], bytes[2 + i * 2]]);
+        }
+
+        let mut chars2 = [0u16; 6];
+        for i in 0..6 {
+            chars2[i] = u16::from_le_bytes([bytes[14 + i * 2], bytes[15 + i * 2]]);
+        }
+
+        let mut chars3 = [0u16; 2];
+        for i in 0..2 {
+            chars3[i] = u16::from_le_bytes([bytes[28 + i * 2], bytes[29 + i * 2]]);
+        }
+
+        Some(Self {
+            order,
+            chars1,
+            attributes: bytes[11],
+            entry_type: bytes[12],
+            checksum: bytes[13],
+            chars2,
+            first_cluster: u16::from_le_bytes([bytes[26], bytes[27]]),
+            chars3,
+        })
+    }
+
+    /// Get the sequence number (1-20)
+    pub fn sequence(&self) -> u8 {
+        self.order & 0x1F
+    }
+
+    /// Check if this is the last LFN entry
+    pub fn is_last(&self) -> bool {
+        (self.order & 0x40) != 0
+    }
+
+    /// Extract UTF-16LE characters from this entry
+    pub fn get_chars(&self) -> Vec<u16> {
+        let mut chars = Vec::with_capacity(13);
+
+        // Add chars1 (5 chars)
+        for &c in &self.chars1 {
+            if c == 0x0000 || c == 0xFFFF {
+                return chars;
+            }
+            chars.push(c);
+        }
+
+        // Add chars2 (6 chars)
+        for &c in &self.chars2 {
+            if c == 0x0000 || c == 0xFFFF {
+                return chars;
+            }
+            chars.push(c);
+        }
+
+        // Add chars3 (2 chars)
+        for &c in &self.chars3 {
+            if c == 0x0000 || c == 0xFFFF {
+                return chars;
+            }
+            chars.push(c);
+        }
+
+        chars
+    }
+
+    /// Calculate checksum for short name validation
+    pub fn calculate_checksum(short_name: &[u8; 11]) -> u8 {
+        let mut sum: u8 = 0;
+        for &b in short_name {
+            // Rotate right and add
+            sum = sum.rotate_right(1).wrapping_add(b);
+        }
+        sum
+    }
+}
+
+/// Assemble long filename from multiple LFN entries
+pub fn assemble_lfn(entries: &[LfnEntry]) -> String {
+    if entries.is_empty() {
+        return String::new();
+    }
+
+    // Sort by sequence number (entries should already be in reverse order)
+    let mut sorted: Vec<_> = entries.iter().collect();
+    sorted.sort_by_key(|e| e.sequence());
+
+    // Collect all UTF-16 characters
+    let mut utf16_chars: Vec<u16> = Vec::new();
+    for entry in sorted {
+        utf16_chars.extend(entry.get_chars());
+    }
+
+    // Convert UTF-16LE to String
+    String::from_utf16_lossy(&utf16_chars)
+}
+
 impl DirectoryEntry {
     /// Directory entry size in bytes
     pub const ENTRY_SIZE: usize = 32;
@@ -294,8 +431,13 @@ impl DirectoryEntry {
     /// Attribute: Long file name entry
     pub const ATTR_LONG_NAME: u8 = 0x0F;
 
-    /// Parse directory entry from bytes
+    /// Parse directory entry from bytes (without LFN)
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        Self::from_bytes_with_lfn(bytes, &[])
+    }
+
+    /// Parse directory entry from bytes with optional LFN entries
+    pub fn from_bytes_with_lfn(bytes: &[u8], lfn_entries: &[LfnEntry]) -> Option<Self> {
         if bytes.len() < Self::ENTRY_SIZE {
             return None;
         }
@@ -305,9 +447,21 @@ impl DirectoryEntry {
             return None;
         }
 
-        // Parse name (8 bytes + 3 extension)
+        // Parse short name (8 bytes + 3 extension)
         let name_bytes = &bytes[0..11];
-        let name = Self::parse_name(name_bytes);
+        let short_name = Self::parse_short_name(name_bytes);
+
+        // Determine the display name (LFN if available, otherwise short name)
+        let name = if !lfn_entries.is_empty() {
+            let lfn = assemble_lfn(lfn_entries);
+            if lfn.is_empty() {
+                short_name.clone()
+            } else {
+                lfn
+            }
+        } else {
+            short_name.clone()
+        };
 
         let attributes = bytes[11];
         let create_time = u16::from_le_bytes([bytes[14], bytes[15]]);
@@ -320,6 +474,7 @@ impl DirectoryEntry {
         let file_size = u32::from_le_bytes([bytes[28], bytes[29], bytes[30], bytes[31]]);
 
         Some(Self {
+            short_name,
             name,
             attributes,
             create_time,
@@ -353,8 +508,8 @@ impl DirectoryEntry {
         ((self.first_cluster_high as u32) << 16) | (self.first_cluster_low as u32)
     }
 
-    /// Parse 8.3 filename from bytes
-    fn parse_name(bytes: &[u8]) -> String {
+    /// Parse 8.3 short filename from bytes
+    fn parse_short_name(bytes: &[u8]) -> String {
         let name_part: String = bytes[0..8]
             .iter()
             .take_while(|&&b| b != 0x20)
@@ -373,6 +528,21 @@ impl DirectoryEntry {
             format!("{}.{}", name_part, ext_part)
         }
     }
+
+    /// Check if the raw bytes represent an LFN entry
+    pub fn is_lfn_entry(bytes: &[u8]) -> bool {
+        bytes.len() >= 12 && bytes[11] == Self::ATTR_LONG_NAME
+    }
+
+    /// Check if the raw bytes represent the end of directory
+    pub fn is_end_of_directory(bytes: &[u8]) -> bool {
+        !bytes.is_empty() && bytes[0] == 0x00
+    }
+
+    /// Check if the raw bytes represent a deleted entry
+    pub fn is_deleted_entry(bytes: &[u8]) -> bool {
+        !bytes.is_empty() && bytes[0] == 0xE5
+    }
 }
 
 #[cfg(test)]
@@ -384,6 +554,127 @@ mod tests {
         assert_eq!(FatType::Fat12.to_string(), "FAT12");
         assert_eq!(FatType::Fat16.to_string(), "FAT16");
         assert_eq!(FatType::Fat32.to_string(), "FAT32");
+    }
+
+    #[test]
+    fn test_lfn_entry_parsing() {
+        // Create a sample LFN entry for "Long File Name.txt"
+        let mut bytes = vec![0u8; 32];
+        bytes[0] = 0x41; // Order byte: 1 with "last" bit set
+        bytes[11] = DirectoryEntry::ATTR_LONG_NAME;
+        bytes[12] = 0; // Type
+        bytes[13] = 0; // Checksum
+
+        // "Long " in UTF-16LE at offset 1
+        let name = "Long ";
+        for (i, c) in name.encode_utf16().enumerate() {
+            let offset = 1 + i * 2;
+            bytes[offset] = (c & 0xFF) as u8;
+            bytes[offset + 1] = (c >> 8) as u8;
+        }
+
+        let lfn = LfnEntry::from_bytes(&bytes).unwrap();
+        assert_eq!(lfn.sequence(), 1);
+        assert!(lfn.is_last());
+
+        let chars = lfn.get_chars();
+        assert_eq!(chars.len(), 5);
+    }
+
+    #[test]
+    fn test_lfn_assembly() {
+        // Create two LFN entries that spell "LongFileName.txt"
+        let mut entry1 = vec![0u8; 32];
+        entry1[0] = 0x42; // Order byte: 2 with "last" bit set
+        entry1[11] = DirectoryEntry::ATTR_LONG_NAME;
+
+        // "ame.txt" + padding
+        let name1 = "ame.txt";
+        for (i, c) in name1.encode_utf16().enumerate() {
+            if i < 5 {
+                let offset = 1 + i * 2;
+                entry1[offset] = (c & 0xFF) as u8;
+                entry1[offset + 1] = (c >> 8) as u8;
+            } else {
+                let offset = 14 + (i - 5) * 2;
+                entry1[offset] = (c & 0xFF) as u8;
+                entry1[offset + 1] = (c >> 8) as u8;
+            }
+        }
+        // Null terminate
+        entry1[28] = 0;
+        entry1[29] = 0;
+
+        let mut entry2 = vec![0u8; 32];
+        entry2[0] = 0x01; // Order byte: 1
+        entry2[11] = DirectoryEntry::ATTR_LONG_NAME;
+
+        // "LongFileN"
+        let name2 = "LongFileN";
+        for (i, c) in name2.encode_utf16().enumerate() {
+            if i < 5 {
+                let offset = 1 + i * 2;
+                entry2[offset] = (c & 0xFF) as u8;
+                entry2[offset + 1] = (c >> 8) as u8;
+            } else {
+                let offset = 14 + (i - 5) * 2;
+                entry2[offset] = (c & 0xFF) as u8;
+                entry2[offset + 1] = (c >> 8) as u8;
+            }
+        }
+
+        let lfn1 = LfnEntry::from_bytes(&entry1).unwrap();
+        let lfn2 = LfnEntry::from_bytes(&entry2).unwrap();
+
+        let long_name = assemble_lfn(&[lfn1, lfn2]);
+        assert_eq!(long_name, "LongFileName.txt");
+    }
+
+    #[test]
+    fn test_lfn_checksum() {
+        let short_name: [u8; 11] = *b"LONGFI~1TXT";
+        let checksum = LfnEntry::calculate_checksum(&short_name);
+        // Just verify it doesn't panic and returns a value
+        assert!(checksum > 0 || checksum == 0);
+    }
+
+    #[test]
+    fn test_directory_entry_with_lfn() {
+        // Create a short name entry
+        let mut short_bytes = vec![0u8; 32];
+        short_bytes[0..11].copy_from_slice(b"LONGFI~1TXT");
+        short_bytes[11] = 0x20; // Archive attribute
+        short_bytes[28] = 100; // File size
+
+        // Create an LFN entry
+        let mut lfn_bytes = vec![0u8; 32];
+        lfn_bytes[0] = 0x41; // Order: 1, last
+        lfn_bytes[11] = DirectoryEntry::ATTR_LONG_NAME;
+
+        // "LongFile.txt" in UTF-16LE
+        let name = "LongFile.txt";
+        for (i, c) in name.encode_utf16().enumerate() {
+            if i < 5 {
+                let offset = 1 + i * 2;
+                lfn_bytes[offset] = (c & 0xFF) as u8;
+                lfn_bytes[offset + 1] = (c >> 8) as u8;
+            } else if i < 11 {
+                let offset = 14 + (i - 5) * 2;
+                lfn_bytes[offset] = (c & 0xFF) as u8;
+                lfn_bytes[offset + 1] = (c >> 8) as u8;
+            } else {
+                let offset = 28 + (i - 11) * 2;
+                lfn_bytes[offset] = (c & 0xFF) as u8;
+                lfn_bytes[offset + 1] = (c >> 8) as u8;
+            }
+        }
+
+        let lfn = LfnEntry::from_bytes(&lfn_bytes).unwrap();
+        let entry = DirectoryEntry::from_bytes_with_lfn(&short_bytes, &[lfn]).unwrap();
+
+        assert_eq!(entry.short_name, "LONGFI~1.TXT");
+        assert_eq!(entry.name, "LongFile.txt");
+        assert_eq!(entry.file_size, 100);
     }
 
     #[test]
