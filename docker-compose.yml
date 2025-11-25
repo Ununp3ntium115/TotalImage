@@ -1,0 +1,128 @@
+# TotalImage Docker Compose Configuration
+# Forensic disk image analysis platform
+#
+# Services:
+# - web: REST API server (port 3000)
+# - mcp: MCP server for Claude integration (port 3002)
+# - fire-marshal: Tool orchestration framework (port 3001)
+# - node-red: Visual workflow automation (port 1880)
+
+version: '3.8'
+
+services:
+  # ============================================
+  # TotalImage Web API Server
+  # ============================================
+  web:
+    build:
+      context: .
+      target: runtime
+    image: totalimage:latest
+    container_name: totalimage-web
+    command: ["totalimage-web"]
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./images:/data/images:ro
+      - cache-data:/data/cache
+    environment:
+      - RUST_LOG=info
+      - TOTALIMAGE_CACHE_DIR=/data/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - totalimage-net
+
+  # ============================================
+  # TotalImage MCP Server (Claude Integration)
+  # ============================================
+  mcp:
+    build:
+      context: .
+      target: runtime
+    image: totalimage:latest
+    container_name: totalimage-mcp
+    command: ["totalimage-mcp", "integrated", "--port", "3002"]
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./images:/data/images:ro
+      - cache-data:/data/cache
+    environment:
+      - RUST_LOG=info
+      - TOTALIMAGE_CACHE_DIR=/data/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - totalimage-net
+
+  # ============================================
+  # Fire Marshal Tool Orchestration
+  # ============================================
+  fire-marshal:
+    build:
+      context: .
+      target: runtime
+    image: totalimage:latest
+    container_name: fire-marshal
+    command: ["fire-marshal", "start", "--port", "3001"]
+    ports:
+      - "3001:3001"
+    volumes:
+      - cache-data:/data/cache
+    environment:
+      - RUST_LOG=info
+      - FIRE_MARSHAL_RATE_LIMIT=100
+      - FIRE_MARSHAL_TIMEOUT=30000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - totalimage-net
+
+  # ============================================
+  # Node-RED Visual Workflow Automation
+  # ============================================
+  node-red:
+    image: nodered/node-red:latest
+    container_name: totalimage-nodered
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered-data:/data
+      - ./node-red-contrib-totalimage:/data/node_modules/node-red-contrib-totalimage:ro
+    environment:
+      - TZ=UTC
+    depends_on:
+      - mcp
+      - fire-marshal
+    restart: unless-stopped
+    networks:
+      - totalimage-net
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  totalimage-net:
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  cache-data:
+    driver: local
+  nodered-data:
+    driver: local
