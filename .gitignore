@@ -354,3 +354,4 @@ MigrationBackup/
 # Mac OS metadata
 .DS_Store
 target/
+fire-marshal.redb
