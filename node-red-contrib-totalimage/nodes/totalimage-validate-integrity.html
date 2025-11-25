@@ -1,0 +1,109 @@
+<script type="text/javascript">
+    RED.nodes.registerType('totalimage-validate-integrity', {
+        category: 'TotalImage',
+        color: '#4B8BBE',
+        defaults: {
+            name: { value: '' },
+            server: { value: '', type: 'totalimage-config', required: true },
+            imagePath: { value: '' },
+            checkChecksums: { value: true },
+            checkBootSectors: { value: true }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: 'file.svg',
+        label: function() {
+            return this.name || 'validate integrity';
+        },
+        paletteLabel: 'validate'
+    });
+</script>
+
+<script type="text/html" data-template-name="totalimage-validate-integrity">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+        <input type="text" id="node-input-server">
+    </div>
+    <div class="form-row">
+        <label for="node-input-imagePath"><i class="fa fa-file"></i> Image Path</label>
+        <input type="text" id="node-input-imagePath" placeholder="/path/to/image.img">
+    </div>
+    <div class="form-row">
+        <label for="node-input-checkChecksums"><i class="fa fa-check"></i> Check Checksums</label>
+        <input type="checkbox" id="node-input-checkChecksums" style="width: auto;" checked>
+        <span>Verify embedded checksums (E01, etc.)</span>
+    </div>
+    <div class="form-row">
+        <label for="node-input-checkBootSectors"><i class="fa fa-check"></i> Check Boot Sectors</label>
+        <input type="checkbox" id="node-input-checkBootSectors" style="width: auto;" checked>
+        <span>Validate boot sector signatures</span>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="totalimage-validate-integrity">
+    <p>Validates the integrity of a disk image file by checking
+    checksums, boot sectors, and partition table structures.</p>
+
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt class="optional">payload.path <span class="property-type">string</span></dt>
+        <dd>Path to the disk image file (overrides configured path)</dd>
+
+        <dt class="optional">payload.checkChecksums <span class="property-type">boolean</span></dt>
+        <dd>Verify embedded checksums</dd>
+
+        <dt class="optional">payload.checkBootSectors <span class="property-type">boolean</span></dt>
+        <dd>Validate boot sector signatures</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload.imagePath <span class="property-type">string</span></dt>
+        <dd>Path to the validated image</dd>
+
+        <dt>payload.valid <span class="property-type">boolean</span></dt>
+        <dd>Overall validation result</dd>
+
+        <dt>payload.validation <span class="property-type">object</span></dt>
+        <dd>Detailed validation results</dd>
+
+        <dt>payload.issues <span class="property-type">array</span></dt>
+        <dd>List of validation issues found</dd>
+
+        <dt>payload.checksums <span class="property-type">object</span></dt>
+        <dd>Computed checksums (MD5, SHA1, SHA256)</dd>
+
+        <dt>payload.timestamp <span class="property-type">string</span></dt>
+        <dd>ISO timestamp of validation</dd>
+    </dl>
+
+    <h3>Details</h3>
+    <p>This node performs forensic integrity validation on disk images.
+    It's essential for maintaining chain of custody in forensic investigations.</p>
+
+    <p>Validation checks include:</p>
+    <ul>
+        <li>Boot sector signatures (0x55AA)</li>
+        <li>Partition table CRC (GPT)</li>
+        <li>VHD footer checksums</li>
+        <li>E01 embedded checksums</li>
+        <li>File size consistency</li>
+    </ul>
+
+    <h3>Use Cases</h3>
+    <ul>
+        <li>Forensic evidence validation</li>
+        <li>Backup integrity verification</li>
+        <li>Image corruption detection</li>
+        <li>Chain of custody documentation</li>
+    </ul>
+
+    <h3>References</h3>
+    <ul>
+        <li><a href="https://github.com/Ununp3ntium115/TotalImage">TotalImage GitHub</a></li>
+    </ul>
+</script>

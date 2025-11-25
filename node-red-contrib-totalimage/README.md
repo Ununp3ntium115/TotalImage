@@ -56,6 +56,19 @@ Analyzes a disk image file and returns comprehensive information.
 **Outputs:**
 - `msg.payload.analysis` - Analysis results (vault type, partitions, filesystems)
 
+### totalimage-list-partitions
+
+Lists all partitions/zones in a disk image.
+
+**Inputs:**
+- `msg.payload.path` - Path to disk image file
+- `msg.payload.useCache` - Use cached results
+
+**Outputs:**
+- `msg.payload.partitions` - Array of partition objects (index, offset, length, type)
+- `msg.payload.partitionTable` - Partition table type (MBR or GPT)
+- `msg.payload.count` - Number of partitions found
+
 ### totalimage-list-files
 
 Lists files in a disk image filesystem.
@@ -82,12 +95,27 @@ Extracts a file from a disk image.
 - `msg.payload.success` - Extraction result
 - `msg.payload.outputPath` - Where file was saved
 
+### totalimage-validate-integrity
+
+Validates the integrity of a disk image file.
+
+**Inputs:**
+- `msg.payload.path` - Path to disk image file
+- `msg.payload.checkChecksums` - Verify embedded checksums
+- `msg.payload.checkBootSectors` - Validate boot sector signatures
+
+**Outputs:**
+- `msg.payload.valid` - Overall validation result (boolean)
+- `msg.payload.issues` - Array of validation issues found
+- `msg.payload.checksums` - Computed checksums (MD5, SHA1, SHA256)
+
 ## Supported Formats
 
 ### Container Formats (Vaults)
-- Raw sector images (.img, .dd, .raw)
-- VHD Fixed and Dynamic
-- ISO images
+- Raw sector images (.img, .dd, .raw, .iso)
+- VHD Fixed, Dynamic, and Differencing
+- E01 (EnCase) forensic format
+- AFF4 (Advanced Forensic Format 4)
 
 ### Partition Tables (Zones)
 - MBR (Master Boot Record)
@@ -95,6 +123,7 @@ Extracts a file from a disk image.
 
 ### Filesystems (Territories)
 - FAT12, FAT16, FAT32 (with Long File Name support)
+- exFAT
 - ISO-9660
 
 ## Example Flow

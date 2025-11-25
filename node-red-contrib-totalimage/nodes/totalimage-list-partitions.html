@@ -1,0 +1,89 @@
+<script type="text/javascript">
+    RED.nodes.registerType('totalimage-list-partitions', {
+        category: 'TotalImage',
+        color: '#4B8BBE',
+        defaults: {
+            name: { value: '' },
+            server: { value: '', type: 'totalimage-config', required: true },
+            imagePath: { value: '' },
+            useCache: { value: true }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: 'file.svg',
+        label: function() {
+            return this.name || 'list partitions';
+        },
+        paletteLabel: 'partitions'
+    });
+</script>
+
+<script type="text/html" data-template-name="totalimage-list-partitions">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-server"><i class="fa fa-server"></i> Server</label>
+        <input type="text" id="node-input-server">
+    </div>
+    <div class="form-row">
+        <label for="node-input-imagePath"><i class="fa fa-file"></i> Image Path</label>
+        <input type="text" id="node-input-imagePath" placeholder="/path/to/image.img">
+    </div>
+    <div class="form-row">
+        <label for="node-input-useCache"><i class="fa fa-database"></i> Use Cache</label>
+        <input type="checkbox" id="node-input-useCache" style="width: auto;" checked>
+        <span>Use cached results if available</span>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="totalimage-list-partitions">
+    <p>Lists all partitions/zones in a disk image file.</p>
+
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt class="optional">payload.path <span class="property-type">string</span></dt>
+        <dd>Path to the disk image file (overrides configured path)</dd>
+
+        <dt class="optional">payload.useCache <span class="property-type">boolean</span></dt>
+        <dd>Use cached results if available</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload.imagePath <span class="property-type">string</span></dt>
+        <dd>Path to the analyzed image</dd>
+
+        <dt>payload.partitions <span class="property-type">array</span></dt>
+        <dd>List of partitions with:
+            <ul>
+                <li><code>index</code> - Partition index</li>
+                <li><code>offset</code> - Start offset in bytes</li>
+                <li><code>length</code> - Size in bytes</li>
+                <li><code>type</code> - Partition type (FAT32, NTFS, etc.)</li>
+            </ul>
+        </dd>
+
+        <dt>payload.partitionTable <span class="property-type">string</span></dt>
+        <dd>Partition table type (MBR or GPT)</dd>
+
+        <dt>payload.count <span class="property-type">number</span></dt>
+        <dd>Number of partitions found</dd>
+
+        <dt>payload.timestamp <span class="property-type">string</span></dt>
+        <dd>ISO timestamp of the operation</dd>
+    </dl>
+
+    <h3>Details</h3>
+    <p>This node connects to the TotalImage MCP server to enumerate partitions
+    in disk images. It supports both MBR and GPT partition tables.</p>
+
+    <p>Use this node before list-files or extract nodes to determine which
+    partition index to use.</p>
+
+    <h3>References</h3>
+    <ul>
+        <li><a href="https://github.com/Ununp3ntium115/TotalImage">TotalImage GitHub</a></li>
+    </ul>
+</script>

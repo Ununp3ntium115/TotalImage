@@ -23,8 +23,10 @@
     "version": ">=2.0.0",
     "nodes": {
       "totalimage-analyze": "nodes/totalimage-analyze.js",
+      "totalimage-list-partitions": "nodes/totalimage-list-partitions.js",
       "totalimage-list-files": "nodes/totalimage-list-files.js",
       "totalimage-extract": "nodes/totalimage-extract.js",
+      "totalimage-validate-integrity": "nodes/totalimage-validate-integrity.js",
       "totalimage-config": "nodes/totalimage-config.js"
     }
   },
