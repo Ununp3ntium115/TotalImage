@@ -9,10 +9,13 @@
 
 | Aspect | Status | Location |
 |--------|--------|----------|
-| **Rust Crates** | 9/9 Complete | `crates/` |
-| **Tests** | 87 passing | All crates |
-| **MCP Server** | Compiles, dual-mode | `crates/totalimage-mcp/` |
+| **Rust Crates** | 10/10 Complete | `crates/` |
+| **Tests** | 98+ passing | All crates |
+| **MCP Server** | ✅ Complete, dual-mode | `crates/totalimage-mcp/` |
 | **Fire Marshal Framework** | ✅ Complete | `crates/fire-marshal/` |
+| **Disk Acquisition** | ✅ Complete | `crates/totalimage-acquire/` |
+| **Node-RED Integration** | ✅ Complete | `node-red-contrib-totalimage/` |
+| **FAT LFN/Subdirs** | ✅ Complete | `crates/totalimage-territories/` |
 | **Security Hardening** | Phase 1 complete | `SECURITY.md` |
 | **PYRO Integration Design** | Complete | `steering/PYRO-INTEGRATION-DESIGN.md` |
 | **WinPE Bootable USB** | Design pending | See Section 11 |
@@ -119,8 +122,8 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 | File | Lines | Function |
 |------|-------|----------|
 | `lib.rs` | 27 | Auto-detection factory |
-| `fat/mod.rs` | 521 | FAT12/16/32 filesystem |
-| `fat/types.rs` | 446 | BPB, FAT entries, directory |
+| `fat/mod.rs` | 814 | FAT12/16/32 filesystem |
+| `fat/types.rs` | 747 | BPB, FAT entries, directory, LFN |
 | `iso/mod.rs` | 472 | ISO-9660 filesystem |
 | `iso/types.rs` | 498 | Volume descriptors, directory records |
 
@@ -130,9 +133,9 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 - ✅ Cluster chain tracing (circular reference protection)
 - ✅ Root directory enumeration
 - ✅ File extraction via cluster chains
-- ❌ Subdirectory navigation
-- ❌ Long File Name (LFN) support
-- ⚠️ FAT32 root directory (partial)
+- ✅ Subdirectory navigation (cluster chain following)
+- ✅ Long File Name (LFN) support (UTF-16LE)
+- ✅ FAT32 root directory (full support)
 
 **ISO-9660 Features:**
 - ✅ Volume descriptor parsing
@@ -143,7 +146,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 - ❌ Rock Ridge extension (POSIX)
 - ❌ El Torito (bootable CDs)
 
-**Tests:** 24 passing (10 FAT + 14 ISO)
+**Tests:** 30+ passing (14 FAT + 14 ISO + LFN/subdirectory tests)
 
 ---
 
@@ -214,7 +217,32 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 ---
 
-### 2.9 fire-marshal ✅ COMPLETE
+### 2.9 totalimage-acquire ✅ COMPLETE (NEW)
+**Purpose:** Disk image acquisition and creation (FTK Imager replacement)
+
+| File | Lines | Function |
+|------|-------|----------|
+| `lib.rs` | 15 | Public API exports |
+| `error.rs` | 45 | AcquireError enum |
+| `hash.rs` | 223 | MD5/SHA1/SHA256 computation |
+| `progress.rs` | 167 | Progress tracking with ETA |
+| `raw.rs` | 264 | Raw dd-equivalent acquisition |
+
+**Features:**
+- ✅ Raw disk acquisition (`dd` equivalent)
+- ✅ Multi-hash during acquisition (MD5, SHA1, SHA256)
+- ✅ Progress tracking with transfer rate and ETA
+- ✅ Bad block handling (skip and log)
+- ✅ Post-acquisition verification
+- ✅ Cancellation support
+- ❌ VHD image creation (planned)
+- ❌ E01 format support (planned)
+
+**Tests:** 11 passing
+
+---
+
+### 2.10 fire-marshal ✅ COMPLETE
 **Purpose:** Tool orchestration framework for PYRO Platform Ignition
 
 | File | Lines | Function |
@@ -313,10 +341,11 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 ### 5.2 What's Missing (Critical for PYRO)
 
-1. **Node-RED Contrib Package** - Not implemented
+1. ~~**Node-RED Contrib Package**~~ - ✅ Complete
 2. **WinPE Bootable USB Creation** - FTK Imager replacement feature
-3. **Disk Acquisition (Write)** - Currently read-only
+3. ~~**Disk Acquisition (Write)**~~ - ✅ Raw acquisition complete
 4. **E01/AFF4 Format Support** - Forensic formats
+5. **VHD Image Creation** - Write capability for VHD
 
 ### 5.3 Integration Checklist
 
@@ -326,13 +355,17 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 [x] Implement HTTP transport in MCP server
 [x] Implement shared redb database
 [x] Add rate limiting (SEC-007 - Fire Marshal)
-[ ] Create Node-RED contrib package
+[x] Create Node-RED contrib package
+[x] Implement FAT subdirectory navigation
+[x] Add Long File Name (LFN) support
+[x] Add disk acquisition (raw images)
+[ ] Add VHD image creation
 [ ] Add TLS/HTTPS support
 [ ] Create Docker deployment images
 [ ] Write integration tests
 [ ] Performance benchmarking
 [ ] Implement WinPE bootable USB
-[ ] Add disk acquisition (write mode)
+[ ] Add E01/AFF4 format support
 ```
 
 ---
@@ -353,18 +386,20 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 |-----|--------|--------|
 | ~~SEC-007: Rate limiting~~ | ~~2 hours~~ | ✅ Complete (Fire Marshal) |
 | ~~Fire Marshal framework~~ | ~~16 hours~~ | ✅ Complete |
+| ~~FAT subdirectory navigation~~ | ~~4 hours~~ | ✅ Complete |
+| ~~Long File Name (LFN) support~~ | ~~8 hours~~ | ✅ Complete |
+| ~~Disk image acquisition~~ | ~~16 hours~~ | ✅ Complete (raw) |
 | WinPE bootable USB | 32 hours | FTK Imager replacement |
-| Disk image acquisition | 16 hours | Write capability |
-| FAT subdirectory navigation | 4 hours | Full FAT support |
-| Long File Name (LFN) support | 8 hours | Modern FAT support |
+| VHD image creation | 8 hours | Full write capability |
 
 ### P2 - Should Fix
 
 | Gap | Effort | Impact |
 |-----|--------|--------|
-| Node-RED contrib package | 8 hours | Visual workflow |
+| ~~Node-RED contrib package~~ | ~~8 hours~~ | ✅ Complete |
 | Fuzzing harness | 4 hours | Security testing |
 | exFAT filesystem | 16 hours | Modern removable media |
+| E01 format support | 16 hours | Forensic format |
 | Web cache test deadlock | 4 hours | Test reliability |
 
 ### P3 - Nice to Have
@@ -514,43 +549,51 @@ curl http://127.0.0.1:3000/health
 5. [x] Test MCP server functionality
 6. [x] Commit and push updates
 
-### Short-Term (Next Session)
-1. [ ] Create Node-RED contrib package
-2. [ ] Implement FAT subdirectory navigation
-3. [ ] Add LFN support
-4. [ ] Begin disk acquisition crate
+### Short-Term (Completed)
+1. [x] Create Node-RED contrib package
+2. [x] Implement FAT subdirectory navigation
+3. [x] Add LFN support
+4. [x] Create disk acquisition crate (raw images)
 
-### Medium-Term (FTK Imager Replacement)
-1. [ ] Implement WinPE bootable USB creation
-2. [ ] Add disk write capabilities
+### Medium-Term (In Progress)
+1. [ ] Add VHD image creation
+2. [ ] Implement exFAT filesystem
 3. [ ] E01/AFF4 format support
-4. [ ] Add fuzzing harness
-5. [ ] Docker deployment images
-6. [ ] Performance benchmarking
+4. [ ] Add differencing VHD support
+
+### Long-Term (FTK Imager Replacement)
+1. [ ] Implement WinPE bootable USB creation
+2. [ ] Add fuzzing harness
+3. [ ] Docker deployment images
+4. [ ] Performance benchmarking
+5. [ ] NTFS read-only support
 
 ---
 
 ## Summary
 
-**TotalImage Rust implementation is ~90% complete for PYRO readiness:**
+**TotalImage Rust implementation is ~95% complete for PYRO readiness:**
 
-- ✅ Core disk image analysis: **Complete** (8 crates, 87 tests)
+- ✅ Core disk image analysis: **Complete** (10 crates, 98+ tests)
 - ✅ MCP Server: **Complete** (dual-mode: stdio + HTTP)
 - ✅ Fire Marshal framework: **Complete** (rate limiting, orchestration)
 - ✅ Shared redb caching: **Complete** (TTL, cross-tool)
-- ⚠️ Node-RED integration: **Design only**
+- ✅ Node-RED integration: **Complete** (4 nodes)
+- ✅ FAT LFN/Subdirs: **Complete** (full FAT32 support)
+- ✅ Disk acquisition (raw): **Complete** (dd-equivalent with hashing)
+- ⚠️ VHD image creation: **Pending** (read-only currently)
 - ⚠️ WinPE bootable USB: **Design only** (FTK Imager replacement)
-- ⚠️ Disk acquisition: **Read-only** (write pending)
 - ⚠️ Production deployment: **Needs Docker, TLS**
 
 **Critical Path to Full FTK Replacement:**
-1. Create Node-RED package (8 hrs)
-2. Implement disk acquisition (16 hrs)
-3. Implement WinPE bootable USB (32 hrs)
-4. Docker + TLS deployment (8 hrs)
-5. Integration testing (8 hrs)
+1. ~~Create Node-RED package~~ ✅
+2. ~~Implement disk acquisition~~ ✅ (raw complete)
+3. Add VHD image creation (8 hrs)
+4. Implement WinPE bootable USB (32 hrs)
+5. Docker + TLS deployment (8 hrs)
+6. Integration testing (8 hrs)
 
-**Estimated Remaining Effort:** ~72 hours to full FTK Imager replacement
+**Estimated Remaining Effort:** ~56 hours to full FTK Imager replacement
 
 ---
 

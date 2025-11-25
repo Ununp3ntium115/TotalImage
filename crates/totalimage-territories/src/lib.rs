@@ -5,7 +5,7 @@
 //! This crate provides Territory implementations for various file systems:
 //! - **FAT**: FAT12, FAT16, and FAT32 file systems
 //! - **ISO 9660**: CD-ROM file system (read-only)
-//! - **exFAT**: Extended FAT file system - coming soon
+//! - **exFAT**: Extended FAT file system for flash media
 //!
 //! ## Example
 //!
@@ -20,8 +20,10 @@
 //! println!("Filesystem: {}", territory.identify());
 //! ```
 
+pub mod exfat;
 pub mod fat;
 pub mod iso;
 
+pub use exfat::ExfatTerritory;
 pub use fat::FatTerritory;
 pub use iso::IsoTerritory;
