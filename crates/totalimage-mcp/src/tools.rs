@@ -16,10 +16,10 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use totalimage_core::{validate_file_path, Zone, Territory, Vault, ZoneTable};
+use totalimage_core::{validate_file_path, Zone, Territory, ZoneTable};
 use totalimage_pipeline::PartialPipeline;
 use totalimage_territories::{FatTerritory, IsoTerritory};
-use totalimage_vaults::{RawVault, VaultConfig};
+use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
 
 /// Tool trait for MCP tools
@@ -235,7 +235,7 @@ impl Tool for AnalyzeDiskImageTool {
             .context("Invalid file path")?;
 
         // Analyze vault
-        let mut vault = RawVault::open(&path, VaultConfig::default())
+        let mut vault = open_vault(&path, VaultConfig::default())
             .context("Failed to open vault")?;
 
         let vault_info = VaultInfo {
@@ -410,7 +410,7 @@ impl Tool for ListPartitionsTool {
         let path = validate_file_path(&input.path)?;
 
         // Open vault
-        let mut vault = RawVault::open(&path, VaultConfig::default())?;
+        let mut vault = open_vault(&path, VaultConfig::default())?;
         let sector_size = 512;
 
         let output = if let Ok(mbr) = MbrZoneTable::parse(vault.content(), sector_size) {
@@ -535,7 +535,7 @@ impl Tool for ListFilesTool {
         let path = validate_file_path(&input.path)?;
 
         // Open vault and get zone
-        let mut vault = RawVault::open(&path, VaultConfig::default())?;
+        let mut vault = open_vault(&path, VaultConfig::default())?;
         let sector_size = 512;
 
         // Get zone information
@@ -670,7 +670,7 @@ impl Tool for ExtractFileTool {
         let output_path = PathBuf::from(&input.output_path);
 
         // Open vault
-        let mut vault = RawVault::open(&image_path, VaultConfig::default())?;
+        let mut vault = open_vault(&image_path, VaultConfig::default())?;
         let sector_size = 512;
 
         // Get zone information
@@ -798,7 +798,7 @@ impl Tool for ValidateIntegrityTool {
         let path = validate_file_path(&input.path)?;
 
         // Open vault
-        let mut vault = RawVault::open(&path, VaultConfig::default())?;
+        let mut vault = open_vault(&path, VaultConfig::default())?;
         let mut issues = Vec::new();
 
         // Check partition table

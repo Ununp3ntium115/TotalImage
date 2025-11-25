@@ -5,9 +5,9 @@
 use std::env;
 use std::path::Path;
 use std::process;
-use totalimage_core::{Result, Vault, ZoneTable};
+use totalimage_core::{Result, ZoneTable};
 use totalimage_pipeline::PartialPipeline;
-use totalimage_vaults::{RawVault, VaultConfig};
+use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
 
 fn main() {
@@ -117,7 +117,7 @@ fn print_usage(program: &str) {
 
 fn cmd_info(image_path: &str) -> Result<()> {
     let path = Path::new(image_path);
-    let mut vault = RawVault::open(path, VaultConfig::default())?;
+    let mut vault = open_vault(path, VaultConfig::default())?;
 
     println!("=== Vault Information ===");
     println!("Path:   {}", image_path);
@@ -155,7 +155,7 @@ fn cmd_info(image_path: &str) -> Result<()> {
 
 fn cmd_zones(image_path: &str) -> Result<()> {
     let path = Path::new(image_path);
-    let mut vault = RawVault::open(path, VaultConfig::default())?;
+    let mut vault = open_vault(path, VaultConfig::default())?;
 
     println!("=== Partition Zones ===");
     println!();
@@ -257,7 +257,7 @@ fn cmd_list(image_path: &str, zone_index: usize) -> Result<()> {
     use totalimage_core::Territory;
 
     let path = Path::new(image_path);
-    let mut vault = RawVault::open(path, VaultConfig::default())?;
+    let mut vault = open_vault(path, VaultConfig::default())?;
     let sector_size = 512;
 
     // Try to parse partition table
@@ -331,7 +331,7 @@ fn cmd_extract(image_path: &str, file_path: &str, zone_index: usize, output_path
     use std::io::Write;
 
     let path = Path::new(image_path);
-    let mut vault = RawVault::open(path, VaultConfig::default())?;
+    let mut vault = open_vault(path, VaultConfig::default())?;
     let sector_size = 512;
 
     // Try to parse partition table
