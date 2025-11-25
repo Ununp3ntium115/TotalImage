@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::sync::Arc;
-use totalimage_mcp::{IntegratedConfig, MCPServer, StandaloneConfig};
+use totalimage_mcp::{AuthConfig, IntegratedConfig, MCPServer, StandaloneConfig};
 
 #[derive(Parser)]
 #[command(name = "totalimage-mcp")]
@@ -144,11 +144,31 @@ async fn run_integrated(
     tracing::info!("  HTTP Port: {}", port);
     tracing::info!("  Tool Name: {}", tool_name);
 
+    // Load auth config from environment
+    let auth_config = AuthConfig::from_env();
+    if auth_config.enabled {
+        tracing::info!("  Authentication: ENABLED");
+    } else {
+        tracing::info!("  Authentication: DISABLED (set MCP_AUTH_ENABLED=true to enable)");
+    }
+
+    // Check for WebSocket support
+    let websocket_enabled = std::env::var("MCP_WEBSOCKET_ENABLED")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(true); // Enabled by default
+    if websocket_enabled {
+        tracing::info!("  WebSocket: ENABLED at /ws");
+    } else {
+        tracing::info!("  WebSocket: DISABLED");
+    }
+
     let config = IntegratedConfig {
         cache_dir,
         marshal_url,
         port,
         tool_name,
+        auth_config: Some(auth_config),
+        websocket_enabled,
     };
 
     let server = Arc::new(MCPServer::new_integrated(config)?);

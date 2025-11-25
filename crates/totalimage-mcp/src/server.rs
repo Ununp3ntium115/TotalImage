@@ -4,15 +4,18 @@
 //! - Standalone: stdio transport for Claude Desktop
 //! - Integrated: HTTP transport + Fire Marshal registration
 
+use crate::auth::{auth_middleware, AuthConfig};
 use crate::cache::ToolCache;
 use crate::protocol::*;
 use crate::tools::*;
+use crate::websocket::{ws_handler, WsState};
 use anyhow::{Context, Result};
 use axum::{
     extract::State,
     http::StatusCode,
+    middleware,
     response::{IntoResponse, Json},
-    routing::post,
+    routing::{get, post},
     Router,
 };
 use serde_json::json;
@@ -42,6 +45,10 @@ pub struct IntegratedConfig {
     pub marshal_url: String,
     pub port: u16,
     pub tool_name: String,
+    /// Authentication configuration (optional)
+    pub auth_config: Option<AuthConfig>,
+    /// Enable WebSocket endpoint for progress updates
+    pub websocket_enabled: bool,
 }
 
 /// MCP Server
@@ -202,11 +209,43 @@ impl MCPServer {
             server: self.clone(),
         };
 
-        let app = Router::new()
+        // Get auth config (use default disabled if not provided)
+        let auth_config = config
+            .auth_config
+            .clone()
+            .unwrap_or_else(AuthConfig::default);
+        let auth_enabled = auth_config.enabled;
+        let auth_config = Arc::new(auth_config);
+
+        // Build router with optional auth middleware
+        let mcp_router = Router::new()
             .route("/mcp", post(handle_mcp_request))
             .with_state(app_state);
 
-        let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
+        // Create WebSocket state for progress broadcasting
+        let ws_state = Arc::new(WsState::new());
+
+        // Build base router with health and optional WebSocket
+        let mut base_router = Router::new()
+            .route("/health", get(handle_health));
+
+        if config.websocket_enabled {
+            tracing::info!("WebSocket endpoint enabled at /ws");
+            base_router = base_router.route("/ws", get(ws_handler).with_state(ws_state));
+        }
+
+        let app = if auth_enabled {
+            tracing::info!("JWT/API key authentication enabled");
+            base_router.merge(mcp_router.layer(middleware::from_fn_with_state(
+                    auth_config,
+                    auth_middleware,
+                )))
+        } else {
+            tracing::info!("Authentication disabled (use MCP_AUTH_ENABLED=true to enable)");
+            base_router.merge(mcp_router)
+        };
+
+        let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
         let listener = tokio::net::TcpListener::bind(addr).await?;
 
         tracing::info!("MCP HTTP server listening on {}", addr);
@@ -333,4 +372,14 @@ async fn handle_mcp_request(
 ) -> impl IntoResponse {
     let response = state.server.handle_request(request).await;
     (StatusCode::OK, Json(response))
+}
+
+// Health check handler (no auth required)
+async fn handle_health() -> impl IntoResponse {
+    Json(json!({
+        "status": "healthy",
+        "service": "totalimage-mcp",
+        "version": env!("CARGO_PKG_VERSION"),
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    }))
 }

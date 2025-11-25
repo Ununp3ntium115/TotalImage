@@ -50,3 +50,7 @@ redb.workspace = true
 
 # HTTP client for Fire Marshal registration
 reqwest = { workspace = true, features = ["json"] }
+
+# Authentication
+jsonwebtoken.workspace = true
+chrono.workspace = true
