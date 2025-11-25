@@ -1,0 +1,43 @@
+[package]
+name = "fire-marshal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Tool orchestration framework for PYRO Platform Ignition"
+
+[dependencies]
+# Workspace dependencies
+thiserror.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+bincode.workspace = true
+axum.workspace = true
+tower = { version = "0.4", features = ["limit"] }
+tower-http.workspace = true
+redb.workspace = true
+chrono.workspace = true
+clap = { version = "4.4", features = ["derive", "env"] }
+uuid.workspace = true
+reqwest.workspace = true
+
+# Rate limiting
+governor = "0.6"
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bin]]
+name = "fire-marshal"
+path = "src/main.rs"
+
+[lib]
+name = "fire_marshal"
+path = "src/lib.rs"

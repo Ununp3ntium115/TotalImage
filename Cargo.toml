@@ -8,6 +8,7 @@ members = [
     "crates/totalimage-cli",
     "crates/totalimage-web",
     "crates/totalimage-mcp",
+    "crates/fire-marshal",
 ]
 
 resolver = "2"
@@ -52,7 +53,7 @@ encoding_rs = "0.8"
 # WEB
 axum = { version = "0.7", features = ["multipart"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["fs", "cors"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "timeout"] }
 reqwest = { version = "0.11", features = ["json"] }
 
 # DATABASE
