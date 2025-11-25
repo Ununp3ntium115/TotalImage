@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "totalimage": {
+      "command": "/usr/local/bin/totalimage-mcp",
+      "args": ["standalone"],
+      "env": {
+        "RUST_LOG": "info",
+        "TOTALIMAGE_CACHE_DIR": "~/.cache/totalimage"
+      }
+    }
+  }
+}

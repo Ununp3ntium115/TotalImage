@@ -15,7 +15,7 @@ use axum::{
     routing::post,
     Router,
 };
-use serde_json::{json, Value};
+use serde_json::json;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -48,6 +48,8 @@ pub struct IntegratedConfig {
 pub struct MCPServer {
     mode: ServerMode,
     tools: Vec<ToolEnum>,
+    /// Cache for tool results (reserved for future use)
+    #[allow(dead_code)]
     cache: Arc<ToolCache>,
 }
 

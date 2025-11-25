@@ -8,7 +8,7 @@
 //! - validate_integrity: Validate checksums and structure
 
 use crate::cache::ToolCache;
-use crate::protocol::{Content, ToolDefinition, ToolResult};
+use crate::protocol::{ToolDefinition, ToolResult};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
