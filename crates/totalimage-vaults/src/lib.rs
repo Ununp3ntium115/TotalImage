@@ -39,4 +39,4 @@ pub mod vhd;
 
 pub use e01::E01Vault;
 pub use raw::{RawVault, VaultConfig};
-pub use vhd::VhdVault;
+pub use vhd::{VhdChainVault, VhdVault};

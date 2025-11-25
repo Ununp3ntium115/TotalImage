@@ -17,10 +17,10 @@ pub mod types;
 
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use totalimage_core::{ReadSeek, Result, Vault};
 use totalimage_pipeline::{MmapPipeline, PartialPipeline};
-use types::{BlockAllocationTable, VhdDynamicHeader, VhdFooter, VhdType};
+use types::{BlockAllocationTable, ParentLocatorEntry, VhdDynamicHeader, VhdFooter, VhdType};
 
 use crate::VaultConfig;
 
@@ -171,7 +171,316 @@ impl VhdVault {
             VhdType::Dynamic | VhdType::Differencing
         )
     }
+
+    /// Check if this is a differencing VHD
+    pub fn is_differencing(&self) -> bool {
+        self.footer.disk_type == VhdType::Differencing
+    }
+
+    /// Get parent UUID (for differencing VHDs)
+    pub fn parent_uuid(&self) -> Option<[u8; 16]> {
+        if self.is_differencing() {
+            self.dynamic_header.as_ref().map(|h| h.parent_uuid)
+        } else {
+            None
+        }
+    }
+
+    /// Get parent name from the dynamic header (for differencing VHDs)
+    pub fn parent_name(&self) -> Option<String> {
+        if self.is_differencing() {
+            self.dynamic_header.as_ref().and_then(|h| h.parent_name())
+        } else {
+            None
+        }
+    }
+
+    /// Get parent locator entries (for differencing VHDs)
+    pub fn parent_locators(&self) -> Vec<ParentLocatorEntry> {
+        if self.is_differencing() {
+            self.dynamic_header
+                .as_ref()
+                .map(|h| h.parent_locators())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Read the parent path from a locator entry
+    pub fn read_parent_path(&mut self, locator: &ParentLocatorEntry) -> Result<Option<String>> {
+        if locator.platform_data_length == 0 {
+            return Ok(None);
+        }
+
+        // Seek to the locator data
+        self.pipeline.seek(SeekFrom::Start(locator.platform_data_offset))?;
+
+        let mut data = vec![0u8; locator.platform_data_length as usize];
+        self.pipeline.read_exact(&mut data)?;
+
+        if locator.is_windows_unicode() {
+            // UTF-16LE encoded path
+            let utf16: Vec<u16> = data
+                .chunks_exact(2)
+                .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+                .collect();
+
+            // Trim null terminator
+            let end = utf16.iter().position(|&c| c == 0).unwrap_or(utf16.len());
+            String::from_utf16(&utf16[..end])
+                .map(Some)
+                .map_err(|_| totalimage_core::Error::invalid_vault("Invalid UTF-16 path"))
+        } else if locator.is_windows_ansi() {
+            // ANSI path (assuming UTF-8 or ASCII)
+            let end = data.iter().position(|&c| c == 0).unwrap_or(data.len());
+            Ok(Some(String::from_utf8_lossy(&data[..end]).to_string()))
+        } else {
+            // Unknown platform - try as UTF-8
+            let end = data.iter().position(|&c| c == 0).unwrap_or(data.len());
+            Ok(Some(String::from_utf8_lossy(&data[..end]).to_string()))
+        }
+    }
+
+    /// Resolve the parent VHD path relative to this VHD's location
+    pub fn resolve_parent_path(&self, vhd_path: &Path, parent_path: &str) -> PathBuf {
+        let parent = PathBuf::from(parent_path);
+
+        // If the parent path is absolute, use it directly
+        if parent.is_absolute() {
+            return parent;
+        }
+
+        // Otherwise, resolve relative to the child VHD's directory
+        if let Some(parent_dir) = vhd_path.parent() {
+            parent_dir.join(&parent)
+        } else {
+            parent
+        }
+    }
+
+    /// Open a differencing VHD with automatic parent chain resolution
+    ///
+    /// This opens the differencing VHD and all its parent VHDs, returning
+    /// a vault that reads from the complete chain.
+    pub fn open_with_parents(path: &Path, config: VaultConfig) -> Result<VhdChainVault> {
+        VhdChainVault::open(path, config)
+    }
 }
+
+/// VHD Chain Vault - Handles differencing VHDs with parent chains
+///
+/// This vault resolves the parent chain and reads data from the
+/// appropriate VHD in the chain (child VHD for modified blocks,
+/// parent VHD for unmodified blocks).
+pub struct VhdChainVault {
+    /// VHD chain from child (index 0) to root parent (last index)
+    chain: Vec<VhdVault>,
+    /// Virtual disk size
+    virtual_size: u64,
+    /// Block size (from child VHD)
+    block_size: u32,
+    /// Current read position
+    position: u64,
+}
+
+impl VhdChainVault {
+    /// Open a VHD chain starting from a differencing VHD
+    pub fn open(path: &Path, config: VaultConfig) -> Result<Self> {
+        let mut chain = Vec::new();
+        let mut current_path = path.to_path_buf();
+
+        // Follow the parent chain until we reach a non-differencing VHD
+        loop {
+            let mut vault = VhdVault::open(&current_path, config.clone())?;
+
+            if vault.is_differencing() {
+                // Find parent path from locators
+                let parent_path = Self::find_parent_path(&mut vault, &current_path)?;
+                chain.push(vault);
+
+                if let Some(parent) = parent_path {
+                    current_path = parent;
+                } else {
+                    return Err(totalimage_core::Error::invalid_vault(
+                        "Differencing VHD has no valid parent locator",
+                    ));
+                }
+            } else {
+                // Non-differencing VHD (root of chain)
+                chain.push(vault);
+                break;
+            }
+
+            // Prevent infinite loops (max chain depth)
+            if chain.len() > 256 {
+                return Err(totalimage_core::Error::invalid_vault(
+                    "VHD parent chain exceeds maximum depth",
+                ));
+            }
+        }
+
+        // Get virtual size and block size from child VHD
+        let virtual_size = chain[0].footer.current_size;
+        let block_size = chain[0]
+            .dynamic_header
+            .as_ref()
+            .map(|h| h.block_size)
+            .unwrap_or(2 * 1024 * 1024); // Default 2MB
+
+        Ok(Self {
+            chain,
+            virtual_size,
+            block_size,
+            position: 0,
+        })
+    }
+
+    /// Find the parent path from a differencing VHD
+    fn find_parent_path(vault: &mut VhdVault, child_path: &Path) -> Result<Option<PathBuf>> {
+        // First try the parent locators
+        for locator in vault.parent_locators() {
+            if let Ok(Some(path_str)) = vault.read_parent_path(&locator) {
+                let resolved = vault.resolve_parent_path(child_path, &path_str);
+                if resolved.exists() {
+                    return Ok(Some(resolved));
+                }
+            }
+        }
+
+        // Fall back to parent name from dynamic header
+        if let Some(parent_name) = vault.parent_name() {
+            let resolved = vault.resolve_parent_path(child_path, &parent_name);
+            if resolved.exists() {
+                return Ok(Some(resolved));
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Get the number of VHDs in the chain
+    pub fn chain_depth(&self) -> usize {
+        self.chain.len()
+    }
+
+    /// Check if a block is allocated in a specific VHD in the chain
+    fn is_block_allocated(&self, chain_index: usize, block_index: usize) -> bool {
+        self.chain
+            .get(chain_index)
+            .and_then(|v| v.bat.as_ref())
+            .and_then(|bat| bat.get_block_offset(block_index))
+            .is_some()
+    }
+
+    /// Find which VHD in the chain has a block allocated
+    fn find_block_owner(&self, block_index: usize) -> usize {
+        for i in 0..self.chain.len() {
+            if self.is_block_allocated(i, block_index) {
+                return i;
+            }
+        }
+        // If no VHD has it allocated, use the root parent
+        self.chain.len() - 1
+    }
+
+    /// Read data from a specific VHD at a given offset
+    fn read_from_chain(&mut self, chain_index: usize, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
+        if chain_index >= self.chain.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid chain index",
+            ));
+        }
+
+        let vault = &mut self.chain[chain_index];
+        vault.pipeline.seek(SeekFrom::Start(offset))?;
+        vault.pipeline.read(buf)
+    }
+}
+
+impl Read for VhdChainVault {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.position >= self.virtual_size {
+            return Ok(0);
+        }
+
+        let remaining = (self.virtual_size - self.position) as usize;
+        let to_read = buf.len().min(remaining);
+
+        let mut total_read = 0;
+
+        while total_read < to_read {
+            let current_offset = self.position + total_read as u64;
+            let block_index = (current_offset / self.block_size as u64) as usize;
+            let block_offset = current_offset % self.block_size as u64;
+
+            // Find which VHD owns this block
+            let owner = self.find_block_owner(block_index);
+
+            // Calculate how much we can read from this block
+            let remaining_in_block = self.block_size as u64 - block_offset;
+            let chunk_size = ((to_read - total_read) as u64).min(remaining_in_block) as usize;
+
+            // Calculate the virtual offset for reading
+            let virtual_offset = block_index as u64 * self.block_size as u64 + block_offset;
+
+            // Read from the appropriate VHD
+            let bytes_read = self.read_from_chain(
+                owner,
+                virtual_offset,
+                &mut buf[total_read..total_read + chunk_size],
+            )?;
+
+            if bytes_read == 0 {
+                break;
+            }
+
+            total_read += bytes_read;
+        }
+
+        self.position += total_read as u64;
+        Ok(total_read)
+    }
+}
+
+impl Seek for VhdChainVault {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let new_pos = match pos {
+            SeekFrom::Start(offset) => offset as i64,
+            SeekFrom::End(offset) => self.virtual_size as i64 + offset,
+            SeekFrom::Current(offset) => self.position as i64 + offset,
+        };
+
+        if new_pos < 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Seek before beginning of VHD chain",
+            ));
+        }
+
+        self.position = (new_pos as u64).min(self.virtual_size);
+        Ok(self.position)
+    }
+}
+
+impl Vault for VhdChainVault {
+    fn identify(&self) -> &str {
+        "Microsoft VHD (Differencing Chain)"
+    }
+
+    fn length(&self) -> u64 {
+        self.virtual_size
+    }
+
+    fn content(&mut self) -> &mut dyn ReadSeek {
+        self
+    }
+}
+
+// Required for ReadSeek trait
+unsafe impl Send for VhdChainVault {}
+unsafe impl Sync for VhdChainVault {}
 
 impl Vault for VhdVault {
     fn identify(&self) -> &str {

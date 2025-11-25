@@ -10,7 +10,7 @@
 | Aspect | Status | Location |
 |--------|--------|----------|
 | **Rust Crates** | 10/10 Complete | `crates/` |
-| **Tests** | 131+ passing | All crates |
+| **Tests** | 134+ passing | All crates |
 | **MCP Server** | ✅ Complete, dual-mode | `crates/totalimage-mcp/` |
 | **Fire Marshal Framework** | ✅ Complete | `crates/fire-marshal/` |
 | **Disk Acquisition** | ✅ Complete | `crates/totalimage-acquire/` |
@@ -19,6 +19,7 @@
 | **exFAT Filesystem** | ✅ Complete | `crates/totalimage-territories/` |
 | **VHD Image Creation** | ✅ Complete | `crates/totalimage-acquire/` |
 | **E01 Forensic Format** | ✅ Complete | `crates/totalimage-vaults/` |
+| **VHD Differencing** | ✅ Complete | `crates/totalimage-vaults/` |
 | **Security Hardening** | Phase 1 complete | `SECURITY.md` |
 | **PYRO Integration Design** | Complete | `steering/PYRO-INTEGRATION-DESIGN.md` |
 | **WinPE Bootable USB** | Design pending | See Section 11 |
@@ -93,11 +94,11 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 - ✅ Raw Sector Images (.img, .dsk, .iso)
 - ✅ VHD Fixed (direct passthrough)
 - ✅ VHD Dynamic (BAT-based sparse blocks)
+- ✅ VHD Differencing (parent chain resolution)
 - ✅ E01 (EnCase) forensic format (read-only)
-- ❌ VHD Differencing (parent chains)
 - ❌ NHD, IMZ, Anex86, PCjs
 
-**Tests:** 40 passing (7 Raw + 23 VHD + 10 E01)
+**Tests:** 43 passing (7 Raw + 26 VHD + 10 E01)
 
 ---
 
@@ -335,7 +336,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 |-------|------------|-------------|---------|
 | totalimage-core | 4 ✅ | ❌ | ❌ |
 | totalimage-pipeline | 9 ✅ | ❌ | ❌ |
-| totalimage-vaults | 40 ✅ | ❌ | ❌ |
+| totalimage-vaults | 43 ✅ | ❌ | ❌ |
 | totalimage-zones | 20 ✅ | ❌ | ❌ |
 | totalimage-territories | 36 ✅ | ❌ | ❌ |
 | totalimage-acquire | 15 ✅ | ❌ | ❌ |
@@ -431,7 +432,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 |-----|--------|--------|
 | Svelte frontend | 40+ hours | Web UI |
 | NTFS read-only | 40+ hours | Windows volumes |
-| Differencing VHD | 8 hours | Snapshot chains |
+| ~~Differencing VHD~~ | ~~8 hours~~ | ✅ Complete |
 | Joliet/Rock Ridge | 8 hours | Modern ISOs |
 
 ---
@@ -584,7 +585,7 @@ curl http://127.0.0.1:3000/health
 1. [x] Add VHD image creation
 2. [x] Implement exFAT filesystem
 3. [x] E01 forensic format support (read-only)
-4. [ ] Add differencing VHD support
+4. [x] Add differencing VHD support (parent chains)
 5. [ ] AFF4 format support
 
 ### Long-Term (FTK Imager Replacement)
@@ -600,7 +601,7 @@ curl http://127.0.0.1:3000/health
 
 **TotalImage Rust implementation is ~98% complete for PYRO readiness:**
 
-- ✅ Core disk image analysis: **Complete** (10 crates, 121+ tests)
+- ✅ Core disk image analysis: **Complete** (10 crates, 134+ tests)
 - ✅ MCP Server: **Complete** (dual-mode: stdio + HTTP)
 - ✅ Fire Marshal framework: **Complete** (rate limiting, orchestration)
 - ✅ Shared redb caching: **Complete** (TTL, cross-tool)
@@ -610,6 +611,7 @@ curl http://127.0.0.1:3000/health
 - ✅ VHD image creation: **Complete** (Fixed & Dynamic formats)
 - ✅ exFAT filesystem: **Complete** (directory listing, file extraction)
 - ✅ E01 forensic format: **Complete** (read-only, zlib decompression)
+- ✅ VHD Differencing: **Complete** (parent chain resolution)
 - ⚠️ WinPE bootable USB: **Design only** (FTK Imager replacement)
 - ⚠️ Production deployment: **Needs Docker, TLS**
 

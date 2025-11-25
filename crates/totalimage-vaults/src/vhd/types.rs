@@ -437,6 +437,108 @@ impl BlockAllocationTable {
     }
 }
 
+/// Parent Locator Entry (24 bytes)
+///
+/// Used in differencing VHDs to locate the parent VHD file.
+#[derive(Debug, Clone)]
+pub struct ParentLocatorEntry {
+    /// Platform code (e.g., "W2ku" for Windows Unicode path)
+    pub platform_code: [u8; 4],
+    /// Platform data space (sectors)
+    pub platform_data_space: u32,
+    /// Platform data length (bytes)
+    pub platform_data_length: u32,
+    /// Reserved
+    pub reserved: u32,
+    /// Platform data offset (bytes from start of file)
+    pub platform_data_offset: u64,
+}
+
+impl ParentLocatorEntry {
+    /// Windows 2000/XP Unicode path ("W2ku")
+    pub const PLATFORM_W2KU: &'static [u8; 4] = b"W2ku";
+    /// Windows 2000/XP ANSI path ("W2ru")
+    pub const PLATFORM_W2RU: &'static [u8; 4] = b"W2ru";
+    /// Macintosh OS X URI ("Mac ")
+    pub const PLATFORM_MAC: &'static [u8; 4] = b"Mac ";
+    /// Macintosh OS X alias ("MacX")
+    pub const PLATFORM_MACX: &'static [u8; 4] = b"MacX";
+
+    /// Size of a parent locator entry
+    pub const SIZE: usize = 24;
+
+    /// Parse parent locator entry from raw bytes
+    pub fn parse(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() < Self::SIZE {
+            return Err(totalimage_core::Error::invalid_vault(
+                "Parent locator entry too small",
+            ));
+        }
+
+        let mut platform_code = [0u8; 4];
+        platform_code.copy_from_slice(&bytes[0..4]);
+
+        let platform_data_space = u32::from_be_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+        let platform_data_length = u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+        let reserved = u32::from_be_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
+        let platform_data_offset = u64::from_be_bytes([
+            bytes[16], bytes[17], bytes[18], bytes[19],
+            bytes[20], bytes[21], bytes[22], bytes[23],
+        ]);
+
+        Ok(Self {
+            platform_code,
+            platform_data_space,
+            platform_data_length,
+            reserved,
+            platform_data_offset,
+        })
+    }
+
+    /// Check if this entry is valid (has non-zero platform code and data)
+    pub fn is_valid(&self) -> bool {
+        self.platform_code != [0u8; 4] && self.platform_data_length > 0
+    }
+
+    /// Check if this is a Windows Unicode path
+    pub fn is_windows_unicode(&self) -> bool {
+        &self.platform_code == Self::PLATFORM_W2KU
+    }
+
+    /// Check if this is a Windows ANSI path
+    pub fn is_windows_ansi(&self) -> bool {
+        &self.platform_code == Self::PLATFORM_W2RU
+    }
+}
+
+impl VhdDynamicHeader {
+    /// Get the parent locator entries
+    pub fn parent_locators(&self) -> Vec<ParentLocatorEntry> {
+        self.parent_locator_entries
+            .iter()
+            .filter_map(|entry| {
+                ParentLocatorEntry::parse(entry).ok()
+            })
+            .filter(|entry| entry.is_valid())
+            .collect()
+    }
+
+    /// Get the parent name as a string (from the Unicode name field)
+    pub fn parent_name(&self) -> Option<String> {
+        // Find the null terminator
+        let end = self.parent_unicode_name
+            .iter()
+            .position(|&c| c == 0)
+            .unwrap_or(self.parent_unicode_name.len());
+
+        if end == 0 {
+            return None;
+        }
+
+        String::from_utf16(&self.parent_unicode_name[..end]).ok()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,5 +628,44 @@ mod tests {
         assert_eq!(bat.offset_within_block(0), 0);
         assert_eq!(bat.offset_within_block(1024), 1024);
         assert_eq!(bat.offset_within_block(2 * 1024 * 1024 + 500), 500);
+    }
+
+    #[test]
+    fn test_parent_locator_entry_parse() {
+        let mut bytes = [0u8; 24];
+        bytes[0..4].copy_from_slice(b"W2ku");
+        bytes[4..8].copy_from_slice(&512u32.to_be_bytes()); // data space
+        bytes[8..12].copy_from_slice(&100u32.to_be_bytes()); // data length
+        bytes[16..24].copy_from_slice(&0x1000u64.to_be_bytes()); // offset
+
+        let entry = ParentLocatorEntry::parse(&bytes).unwrap();
+        assert!(entry.is_windows_unicode());
+        assert!(entry.is_valid());
+        assert_eq!(entry.platform_data_length, 100);
+        assert_eq!(entry.platform_data_offset, 0x1000);
+    }
+
+    #[test]
+    fn test_parent_locator_entry_invalid() {
+        let bytes = [0u8; 24];
+        let entry = ParentLocatorEntry::parse(&bytes).unwrap();
+        assert!(!entry.is_valid());
+    }
+
+    #[test]
+    fn test_parent_locator_platforms() {
+        // Windows Unicode
+        let mut bytes = [0u8; 24];
+        bytes[0..4].copy_from_slice(b"W2ku");
+        bytes[8..12].copy_from_slice(&1u32.to_be_bytes());
+        let entry = ParentLocatorEntry::parse(&bytes).unwrap();
+        assert!(entry.is_windows_unicode());
+        assert!(!entry.is_windows_ansi());
+
+        // Windows ANSI
+        bytes[0..4].copy_from_slice(b"W2ru");
+        let entry = ParentLocatorEntry::parse(&bytes).unwrap();
+        assert!(!entry.is_windows_unicode());
+        assert!(entry.is_windows_ansi());
     }
 }
