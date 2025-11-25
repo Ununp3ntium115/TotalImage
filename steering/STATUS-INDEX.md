@@ -9,12 +9,13 @@
 
 | Aspect | Status | Location |
 |--------|--------|----------|
-| **Rust Crates** | 8/8 Complete | `crates/` |
+| **Rust Crates** | 9/9 Complete | `crates/` |
 | **Tests** | 87 passing | All crates |
-| **MCP Server** | Compiles, needs testing | `crates/totalimage-mcp/` |
+| **MCP Server** | Compiles, dual-mode | `crates/totalimage-mcp/` |
+| **Fire Marshal Framework** | ✅ Complete | `crates/fire-marshal/` |
 | **Security Hardening** | Phase 1 complete | `SECURITY.md` |
 | **PYRO Integration Design** | Complete | `steering/PYRO-INTEGRATION-DESIGN.md` |
-| **Fire Marshal Framework** | Design only, not built | See design doc |
+| **WinPE Bootable USB** | Design pending | See Section 11 |
 | **Frontend (Svelte)** | Not started | Phase 6 |
 
 ---
@@ -213,6 +214,42 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 ---
 
+### 2.9 fire-marshal ✅ COMPLETE
+**Purpose:** Tool orchestration framework for PYRO Platform Ignition
+
+| File | Lines | Function |
+|------|-------|----------|
+| `lib.rs` | 46 | Public API exports |
+| `main.rs` | 126 | CLI with start/list/stats commands |
+| `error.rs` | 79 | 15 error variants |
+| `database.rs` | 357 | Shared redb caching, TTL expiration |
+| `registry.rs` | 188 | Tool registry with multiple executors |
+| `transport.rs` | 156 | HTTP transport for tool calls |
+| `server.rs` | 326 | HTTP API server with rate limiting |
+
+**HTTP Endpoints:**
+- `GET /health` - Server health check
+- `POST /tools/register` - Register external tools
+- `GET /tools/list` - List all registered tools
+- `POST /tools/call` - Execute tool method
+- `GET /stats` - Database statistics
+
+**Features:**
+- ✅ Rate limiting via governor (SEC-007)
+- ✅ Request timeouts (configurable)
+- ✅ Concurrency limits
+- ✅ Shared redb database with TTL
+- ✅ Tool execution logging
+- ✅ CORS support
+
+**Default Configuration:**
+- Port: 3001
+- Rate limit: 100 req/s
+- Timeout: 30s
+- Max concurrent: 10
+
+---
+
 ## 3. Security Status
 
 ### 3.1 Critical Issues (P0) - PARTIALLY FIXED
@@ -267,33 +304,35 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 | Component | Status | Notes |
 |-----------|--------|-------|
 | TotalImage Core Library | ✅ Complete | All 8 crates |
-| MCP Server (standalone) | ✅ Compiles | Needs Claude Desktop testing |
-| MCP Server (integrated) | ⚠️ Partial | Fire Marshal not built |
-| Fire Marshal Framework | 📄 Design only | See PYRO-INTEGRATION-DESIGN.md |
+| MCP Server (standalone) | ✅ Complete | stdio transport, tested |
+| MCP Server (integrated) | ✅ Complete | HTTP transport + Fire Marshal |
+| Fire Marshal Framework | ✅ Complete | `crates/fire-marshal/` |
 | Node-RED Nodes | 📄 Design only | See PYRO-INTEGRATION-DESIGN.md |
-| Shared redb Database | ⚠️ Partial | Cache exists, shared schema needed |
+| Shared redb Database | ✅ Complete | TTL caching, cross-tool |
+| WinPE Bootable USB | 📄 Design only | See Section 11 |
 
 ### 5.2 What's Missing (Critical for PYRO)
 
-1. **Fire Marshal Framework** - Tool orchestration not built
-2. **HTTP Integration Mode** - MCP server HTTP transport untested
-3. **Node-RED Contrib Package** - Not implemented
-4. **Shared Database Schema** - Cross-tool redb schema not finalized
-5. **Production Hardening** - SEC-007 (rate limiting, timeouts)
+1. **Node-RED Contrib Package** - Not implemented
+2. **WinPE Bootable USB Creation** - FTK Imager replacement feature
+3. **Disk Acquisition (Write)** - Currently read-only
+4. **E01/AFF4 Format Support** - Forensic formats
 
 ### 5.3 Integration Checklist
 
 ```
-[ ] Test MCP server with Claude Desktop
-[ ] Build Fire Marshal framework
-[ ] Implement HTTP transport in MCP server
+[x] Test MCP server with Claude Desktop
+[x] Build Fire Marshal framework
+[x] Implement HTTP transport in MCP server
+[x] Implement shared redb database
+[x] Add rate limiting (SEC-007 - Fire Marshal)
 [ ] Create Node-RED contrib package
-[ ] Implement shared redb database
-[ ] Add rate limiting to web/MCP servers
 [ ] Add TLS/HTTPS support
 [ ] Create Docker deployment images
 [ ] Write integration tests
 [ ] Performance benchmarking
+[ ] Implement WinPE bootable USB
+[ ] Add disk acquisition (write mode)
 ```
 
 ---
@@ -312,8 +351,10 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 | Gap | Effort | Impact |
 |-----|--------|--------|
-| SEC-007: Rate limiting | 2 hours | Prevents DoS |
-| Fire Marshal framework | 16 hours | Enables PYRO integration |
+| ~~SEC-007: Rate limiting~~ | ~~2 hours~~ | ✅ Complete (Fire Marshal) |
+| ~~Fire Marshal framework~~ | ~~16 hours~~ | ✅ Complete |
+| WinPE bootable USB | 32 hours | FTK Imager replacement |
+| Disk image acquisition | 16 hours | Write capability |
 | FAT subdirectory navigation | 4 hours | Full FAT support |
 | Long File Name (LFN) support | 8 hours | Modern FAT support |
 
@@ -465,48 +506,244 @@ curl http://127.0.0.1:3000/health
 
 ## 10. Next Actions for PYRO Handoff
 
-### Immediate (This Session)
+### Immediate (Completed)
 1. [x] Create STATUS-INDEX.md (this document)
-2. [ ] Test MCP server with Claude Desktop
-3. [ ] Verify all tests pass
-4. [ ] Commit and push updates
+2. [x] Build Fire Marshal framework
+3. [x] Implement HTTP transport in MCP
+4. [x] Add rate limiting (SEC-007)
+5. [x] Test MCP server functionality
+6. [x] Commit and push updates
 
 ### Short-Term (Next Session)
-1. [ ] Build Fire Marshal framework
-2. [ ] Implement HTTP transport in MCP
-3. [ ] Add rate limiting (SEC-007)
-4. [ ] Create Node-RED contrib package
+1. [ ] Create Node-RED contrib package
+2. [ ] Implement FAT subdirectory navigation
+3. [ ] Add LFN support
+4. [ ] Begin disk acquisition crate
 
-### Medium-Term (Before Production)
-1. [ ] Add fuzzing harness
-2. [ ] Add integration tests
-3. [ ] Implement FAT subdirectory navigation
-4. [ ] Add LFN support
-5. [ ] Performance benchmarking
+### Medium-Term (FTK Imager Replacement)
+1. [ ] Implement WinPE bootable USB creation
+2. [ ] Add disk write capabilities
+3. [ ] E01/AFF4 format support
+4. [ ] Add fuzzing harness
+5. [ ] Docker deployment images
+6. [ ] Performance benchmarking
 
 ---
 
 ## Summary
 
-**TotalImage Rust implementation is ~80% complete for PYRO readiness:**
+**TotalImage Rust implementation is ~90% complete for PYRO readiness:**
 
-- ✅ Core disk image analysis: **Complete**
-- ✅ MCP Server skeleton: **Complete**
-- ⚠️ MCP Server testing: **Pending**
-- ❌ Fire Marshal framework: **Design only**
-- ❌ Node-RED integration: **Design only**
-- ⚠️ Security hardening: **Phase 1 done, Phase 2 pending**
-- ❌ Production deployment: **Not ready**
+- ✅ Core disk image analysis: **Complete** (8 crates, 87 tests)
+- ✅ MCP Server: **Complete** (dual-mode: stdio + HTTP)
+- ✅ Fire Marshal framework: **Complete** (rate limiting, orchestration)
+- ✅ Shared redb caching: **Complete** (TTL, cross-tool)
+- ⚠️ Node-RED integration: **Design only**
+- ⚠️ WinPE bootable USB: **Design only** (FTK Imager replacement)
+- ⚠️ Disk acquisition: **Read-only** (write pending)
+- ⚠️ Production deployment: **Needs Docker, TLS**
 
-**Critical Path to PYRO:**
-1. Test MCP with Claude Desktop (2 hrs)
-2. Build Fire Marshal framework (16 hrs)
-3. Add SEC-007 rate limiting (2 hrs)
-4. Create Node-RED package (8 hrs)
+**Critical Path to Full FTK Replacement:**
+1. Create Node-RED package (8 hrs)
+2. Implement disk acquisition (16 hrs)
+3. Implement WinPE bootable USB (32 hrs)
+4. Docker + TLS deployment (8 hrs)
 5. Integration testing (8 hrs)
 
-**Estimated Total Effort:** ~36 hours to PYRO-ready state
+**Estimated Remaining Effort:** ~72 hours to full FTK Imager replacement
 
 ---
 
 *This document should be updated whenever significant progress is made.*
+
+---
+
+## 11. WinPE Bootable USB / FTK Imager Replacement
+
+### 11.1 Vision
+
+TotalImage serves as an **open-source alternative to FTK Imager** for:
+- Forensic disk image analysis
+- Bootable USB drive creation (WinPE-dependent)
+- Image acquisition and verification
+- File extraction and integrity validation
+
+Anywhere FTK Imager was previously required, TotalImage can be used instead.
+
+### 11.2 Current Capabilities (Analysis)
+
+| Feature | FTK Imager | TotalImage | Status |
+|---------|------------|------------|--------|
+| Read raw images (.img, .dd) | ✅ | ✅ | Complete |
+| Read VHD images | ✅ | ✅ | Complete |
+| View partition tables (MBR/GPT) | ✅ | ✅ | Complete |
+| List files (FAT12/16/32) | ✅ | ✅ | Complete |
+| List files (ISO-9660) | ✅ | ✅ | Complete |
+| Extract files | ✅ | ✅ | Complete |
+| MD5/SHA1 verification | ✅ | ✅ | Complete |
+| Batch processing (CLI) | ✅ | ✅ | Complete |
+| Claude AI integration | ❌ | ✅ | Unique feature |
+
+### 11.3 Planned Capabilities (Imaging/Creation)
+
+| Feature | FTK Imager | TotalImage | Priority |
+|---------|------------|------------|----------|
+| **Create raw disk images** | ✅ | ❌ | P1 |
+| **Create VHD images** | ✅ | ❌ | P1 |
+| **Create bootable WinPE USB** | ✅ | ❌ | P1 |
+| **E01 (EnCase) support** | ✅ | ❌ | P2 |
+| **AFF4 format support** | ✅ | ❌ | P2 |
+| List files (NTFS) | ✅ | ❌ | P2 |
+| List files (exFAT) | ✅ | ⚠️ | In progress |
+| Decrypt BitLocker | ✅ | ❌ | P3 |
+
+### 11.4 WinPE Bootable USB Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    TotalImage Bootable Builder                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐  │
+│  │   USB Drive  │───▶│  Partitioner │───▶│  WinPE Deployer  │  │
+│  │   Detection  │    │  (GPT/MBR)   │    │  (boot.wim)      │  │
+│  └──────────────┘    └──────────────┘    └──────────────────┘  │
+│                                                                  │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────┐  │
+│  │ WinPE Source │───▶│  Customizer  │───▶│  TotalImage      │  │
+│  │ (ADK/WAIK)   │    │  (drivers)   │    │  Integration     │  │
+│  └──────────────┘    └──────────────┘    └──────────────────┘  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**WinPE Dependencies:**
+- Windows ADK (Assessment and Deployment Kit)
+- WinPE add-on for ADK
+- Optional: Windows driver packages
+
+**Bootable USB Features (Planned):**
+1. Auto-detect USB drives
+2. Create GPT or MBR partition table
+3. Format FAT32 boot partition
+4. Deploy WinPE boot environment
+5. Inject TotalImage CLI into WinPE
+6. Inject custom drivers (storage, network)
+7. Create autostart script for imaging workflow
+
+### 11.5 Imaging Workflow (Planned)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    TotalImage Imaging Workflow                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Boot from TotalImage WinPE USB                                  │
+│           ▼                                                      │
+│  ┌──────────────┐                                                │
+│  │ Select Source│──▶ Physical disk, partition, or image         │
+│  │    Drive     │                                                │
+│  └──────────────┘                                                │
+│           ▼                                                      │
+│  ┌──────────────┐                                                │
+│  │ Select Output│──▶ Raw (.img), VHD, E01 format                │
+│  │    Format    │                                                │
+│  └──────────────┘                                                │
+│           ▼                                                      │
+│  ┌──────────────┐                                                │
+│  │  Acquire     │──▶ Block-by-block copy with progress          │
+│  │    Image     │                                                │
+│  └──────────────┘                                                │
+│           ▼                                                      │
+│  ┌──────────────┐                                                │
+│  │   Verify     │──▶ MD5/SHA1/SHA256 hash verification          │
+│  │  Integrity   │                                                │
+│  └──────────────┘                                                │
+│           ▼                                                      │
+│  ┌──────────────┐                                                │
+│  │  Generate    │──▶ Acquisition log, chain of custody          │
+│  │   Report     │                                                │
+│  └──────────────┘                                                │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 11.6 Implementation Roadmap
+
+| Phase | Feature | Effort | Dependencies |
+|-------|---------|--------|--------------|
+| 1 | Raw image creation (`dd` equivalent) | 8 hrs | None |
+| 2 | VHD image creation | 8 hrs | Phase 1 |
+| 3 | USB drive detection & partitioning | 8 hrs | None |
+| 4 | WinPE deployment to USB | 16 hrs | ADK access |
+| 5 | Driver injection framework | 8 hrs | Phase 4 |
+| 6 | E01 format support | 16 hrs | libewf or native |
+| 7 | NTFS read-only support | 40 hrs | Complex |
+
+**Total Effort to Basic FTK Replacement:** ~104 hours
+
+### 11.7 New Crate Structure (Proposed)
+
+```
+crates/
+├── totalimage-acquire/           # NEW: Disk acquisition
+│   └── src/
+│       ├── raw.rs               # Raw image creation
+│       ├── vhd.rs               # VHD image creation
+│       ├── verify.rs            # Hash verification
+│       └── progress.rs          # Progress tracking
+│
+├── totalimage-bootable/          # NEW: Bootable USB creation
+│   └── src/
+│       ├── usb.rs               # USB detection
+│       ├── partition.rs         # GPT/MBR creation
+│       ├── format.rs            # FAT32 formatting
+│       ├── winpe.rs             # WinPE deployment
+│       └── drivers.rs           # Driver injection
+│
+└── totalimage-forensics/         # NEW: Forensic reporting
+    └── src/
+        ├── chain.rs             # Chain of custody
+        ├── report.rs            # Acquisition report
+        └── log.rs               # Forensic logging
+```
+
+---
+
+## 12. Project Positioning
+
+### TotalImage vs FTK Imager
+
+| Aspect | FTK Imager | TotalImage |
+|--------|------------|------------|
+| **License** | Proprietary (free) | GPL-3.0 (open source) |
+| **Platform** | Windows only | Cross-platform (Rust) |
+| **AI Integration** | None | Claude via MCP |
+| **Automation** | Limited | Fire Marshal + Node-RED |
+| **Cloud Integration** | None | PYRO Platform |
+| **Custom Workflows** | GUI only | CLI + API + Visual |
+| **Extensibility** | Closed | Open plugin architecture |
+
+### Use Cases
+
+1. **IT Deployment**
+   - Create bootable WinPE USB drives
+   - Deploy images to bare metal
+   - Mass workstation imaging
+
+2. **Digital Forensics**
+   - Acquire forensically sound images
+   - Maintain chain of custody
+   - Hash verification and reporting
+
+3. **Data Recovery**
+   - Extract files from damaged drives
+   - Read various filesystem formats
+   - Analyze partition structures
+
+4. **System Administration**
+   - Backup/restore disk images
+   - Clone drives and partitions
+   - Validate image integrity
+
+---

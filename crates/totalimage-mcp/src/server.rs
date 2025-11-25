@@ -226,11 +226,26 @@ impl MCPServer {
         tracing::info!("Registering with Fire Marshal at {}", config.marshal_url);
 
         let client = reqwest::Client::new();
+
+        // Build tool methods from our tool definitions
+        let tool_methods: Vec<serde_json::Value> = self.tools.iter().map(|t| {
+            let def = t.definition();
+            json!({
+                "name": def.name,
+                "description": def.description,
+                "input_schema": def.input_schema
+            })
+        }).collect();
+
         let registration = json!({
             "name": config.tool_name,
             "version": env!("CARGO_PKG_VERSION"),
-            "endpoint": format!("http://127.0.0.1:{}/mcp", config.port),
-            "tools": self.tools.iter().map(|t| t.name()).collect::<Vec<_>>(),
+            "description": "TotalImage disk image analysis tools for forensics and IT deployment",
+            "tools": tool_methods,
+            "executor": {
+                "type": "http",
+                "url": format!("http://127.0.0.1:{}/mcp", config.port)
+            }
         });
 
         let response = client
