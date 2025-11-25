@@ -10,12 +10,14 @@
 | Aspect | Status | Location |
 |--------|--------|----------|
 | **Rust Crates** | 10/10 Complete | `crates/` |
-| **Tests** | 98+ passing | All crates |
+| **Tests** | 121+ passing | All crates |
 | **MCP Server** | ✅ Complete, dual-mode | `crates/totalimage-mcp/` |
 | **Fire Marshal Framework** | ✅ Complete | `crates/fire-marshal/` |
 | **Disk Acquisition** | ✅ Complete | `crates/totalimage-acquire/` |
 | **Node-RED Integration** | ✅ Complete | `node-red-contrib-totalimage/` |
 | **FAT LFN/Subdirs** | ✅ Complete | `crates/totalimage-territories/` |
+| **exFAT Filesystem** | ✅ Complete | `crates/totalimage-territories/` |
+| **VHD Image Creation** | ✅ Complete | `crates/totalimage-acquire/` |
 | **Security Hardening** | Phase 1 complete | `SECURITY.md` |
 | **PYRO Integration Design** | Complete | `steering/PYRO-INTEGRATION-DESIGN.md` |
 | **WinPE Bootable USB** | Design pending | See Section 11 |
@@ -121,11 +123,13 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 | File | Lines | Function |
 |------|-------|----------|
-| `lib.rs` | 27 | Auto-detection factory |
+| `lib.rs` | 30 | Auto-detection factory |
 | `fat/mod.rs` | 814 | FAT12/16/32 filesystem |
 | `fat/types.rs` | 747 | BPB, FAT entries, directory, LFN |
 | `iso/mod.rs` | 472 | ISO-9660 filesystem |
 | `iso/types.rs` | 498 | Volume descriptors, directory records |
+| `exfat/mod.rs` | 512 | exFAT filesystem |
+| `exfat/types.rs` | 450 | Boot sector, directory entries |
 
 **FAT Features:**
 - ✅ BPB parsing with auto-type detection
@@ -146,7 +150,17 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 - ❌ Rock Ridge extension (POSIX)
 - ❌ El Torito (bootable CDs)
 
-**Tests:** 30+ passing (14 FAT + 14 ISO + LFN/subdirectory tests)
+**exFAT Features:**
+- ✅ Boot sector parsing
+- ✅ FAT entry reading (32-bit)
+- ✅ Cluster chain following
+- ✅ Contiguous file optimization
+- ✅ Directory entry parsing (File/Stream/FileName)
+- ✅ UTF-16LE file name support
+- ✅ Subdirectory navigation
+- ✅ File extraction
+
+**Tests:** 36 passing (14 FAT + 14 ISO + 8 exFAT)
 
 ---
 
@@ -222,11 +236,12 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 | File | Lines | Function |
 |------|-------|----------|
-| `lib.rs` | 15 | Public API exports |
+| `lib.rs` | 21 | Public API exports |
 | `error.rs` | 45 | AcquireError enum |
 | `hash.rs` | 223 | MD5/SHA1/SHA256 computation |
 | `progress.rs` | 167 | Progress tracking with ETA |
 | `raw.rs` | 264 | Raw dd-equivalent acquisition |
+| `vhd.rs` | 630 | VHD Fixed/Dynamic creation |
 
 **Features:**
 - ✅ Raw disk acquisition (`dd` equivalent)
@@ -235,10 +250,12 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 - ✅ Bad block handling (skip and log)
 - ✅ Post-acquisition verification
 - ✅ Cancellation support
-- ❌ VHD image creation (planned)
+- ✅ VHD Fixed image creation
+- ✅ VHD Dynamic (sparse) image creation
+- ❌ VHD Differencing (parent chains)
 - ❌ E01 format support (planned)
 
-**Tests:** 11 passing
+**Tests:** 15 passing
 
 ---
 
@@ -316,12 +333,14 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 | totalimage-pipeline | 9 ✅ | ❌ | ❌ |
 | totalimage-vaults | 30 ✅ | ❌ | ❌ |
 | totalimage-zones | 20 ✅ | ❌ | ❌ |
-| totalimage-territories | 24 ✅ | ❌ | ❌ |
+| totalimage-territories | 36 ✅ | ❌ | ❌ |
+| totalimage-acquire | 15 ✅ | ❌ | ❌ |
 | totalimage-cli | N/A | ❌ | ❌ |
 | totalimage-web | ⚠️ Deadlock | ❌ | ❌ |
 | totalimage-mcp | ❌ | ❌ | ❌ |
+| fire-marshal | 7 ✅ | ❌ | ❌ |
 
-**Total:** 87 unit tests passing
+**Total:** 121 unit tests passing
 
 ---
 
@@ -359,7 +378,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 [x] Implement FAT subdirectory navigation
 [x] Add Long File Name (LFN) support
 [x] Add disk acquisition (raw images)
-[ ] Add VHD image creation
+[x] Add VHD image creation
 [ ] Add TLS/HTTPS support
 [ ] Create Docker deployment images
 [ ] Write integration tests
@@ -388,9 +407,9 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 | ~~Fire Marshal framework~~ | ~~16 hours~~ | ✅ Complete |
 | ~~FAT subdirectory navigation~~ | ~~4 hours~~ | ✅ Complete |
 | ~~Long File Name (LFN) support~~ | ~~8 hours~~ | ✅ Complete |
-| ~~Disk image acquisition~~ | ~~16 hours~~ | ✅ Complete (raw) |
+| ~~Disk image acquisition~~ | ~~16 hours~~ | ✅ Complete (raw + VHD) |
 | WinPE bootable USB | 32 hours | FTK Imager replacement |
-| VHD image creation | 8 hours | Full write capability |
+| ~~VHD image creation~~ | ~~8 hours~~ | ✅ Complete |
 
 ### P2 - Should Fix
 
@@ -398,7 +417,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 |-----|--------|--------|
 | ~~Node-RED contrib package~~ | ~~8 hours~~ | ✅ Complete |
 | Fuzzing harness | 4 hours | Security testing |
-| exFAT filesystem | 16 hours | Modern removable media |
+| ~~exFAT filesystem~~ | ~~16 hours~~ | ✅ Complete |
 | E01 format support | 16 hours | Forensic format |
 | Web cache test deadlock | 4 hours | Test reliability |
 
@@ -441,7 +460,9 @@ crates/
 │   ├── fat/types.rs                              (446 lines)
 │   ├── iso/mod.rs                                (472 lines)
 │   ├── iso/types.rs                              (498 lines)
-│   └── lib.rs                                    (27 lines)
+│   ├── exfat/mod.rs                              (512 lines)
+│   ├── exfat/types.rs                            (450 lines)
+│   └── lib.rs                                    (30 lines)
 ├── totalimage-vaults/src/
 │   ├── lib.rs                                    (40 lines)
 │   ├── raw.rs                                    (226 lines)
@@ -556,8 +577,8 @@ curl http://127.0.0.1:3000/health
 4. [x] Create disk acquisition crate (raw images)
 
 ### Medium-Term (In Progress)
-1. [ ] Add VHD image creation
-2. [ ] Implement exFAT filesystem
+1. [x] Add VHD image creation
+2. [x] Implement exFAT filesystem
 3. [ ] E01/AFF4 format support
 4. [ ] Add differencing VHD support
 
@@ -572,28 +593,30 @@ curl http://127.0.0.1:3000/health
 
 ## Summary
 
-**TotalImage Rust implementation is ~95% complete for PYRO readiness:**
+**TotalImage Rust implementation is ~98% complete for PYRO readiness:**
 
-- ✅ Core disk image analysis: **Complete** (10 crates, 98+ tests)
+- ✅ Core disk image analysis: **Complete** (10 crates, 121+ tests)
 - ✅ MCP Server: **Complete** (dual-mode: stdio + HTTP)
 - ✅ Fire Marshal framework: **Complete** (rate limiting, orchestration)
 - ✅ Shared redb caching: **Complete** (TTL, cross-tool)
 - ✅ Node-RED integration: **Complete** (4 nodes)
 - ✅ FAT LFN/Subdirs: **Complete** (full FAT32 support)
 - ✅ Disk acquisition (raw): **Complete** (dd-equivalent with hashing)
-- ⚠️ VHD image creation: **Pending** (read-only currently)
+- ✅ VHD image creation: **Complete** (Fixed & Dynamic formats)
+- ✅ exFAT filesystem: **Complete** (directory listing, file extraction)
 - ⚠️ WinPE bootable USB: **Design only** (FTK Imager replacement)
 - ⚠️ Production deployment: **Needs Docker, TLS**
 
 **Critical Path to Full FTK Replacement:**
 1. ~~Create Node-RED package~~ ✅
-2. ~~Implement disk acquisition~~ ✅ (raw complete)
-3. Add VHD image creation (8 hrs)
-4. Implement WinPE bootable USB (32 hrs)
-5. Docker + TLS deployment (8 hrs)
-6. Integration testing (8 hrs)
+2. ~~Implement disk acquisition~~ ✅ (raw + VHD)
+3. ~~Add VHD image creation~~ ✅ (Fixed + Dynamic)
+4. ~~Implement exFAT filesystem~~ ✅
+5. Implement WinPE bootable USB (32 hrs)
+6. Docker + TLS deployment (8 hrs)
+7. Integration testing (8 hrs)
 
-**Estimated Remaining Effort:** ~56 hours to full FTK Imager replacement
+**Estimated Remaining Effort:** ~48 hours to full FTK Imager replacement
 
 ---
 
@@ -631,13 +654,13 @@ Anywhere FTK Imager was previously required, TotalImage can be used instead.
 
 | Feature | FTK Imager | TotalImage | Priority |
 |---------|------------|------------|----------|
-| **Create raw disk images** | ✅ | ❌ | P1 |
-| **Create VHD images** | ✅ | ❌ | P1 |
+| **Create raw disk images** | ✅ | ✅ | Complete |
+| **Create VHD images** | ✅ | ✅ | Complete |
 | **Create bootable WinPE USB** | ✅ | ❌ | P1 |
 | **E01 (EnCase) support** | ✅ | ❌ | P2 |
 | **AFF4 format support** | ✅ | ❌ | P2 |
 | List files (NTFS) | ✅ | ❌ | P2 |
-| List files (exFAT) | ✅ | ⚠️ | In progress |
+| List files (exFAT) | ✅ | ✅ | Complete |
 | Decrypt BitLocker | ✅ | ❌ | P3 |
 
 ### 11.4 WinPE Bootable USB Architecture
