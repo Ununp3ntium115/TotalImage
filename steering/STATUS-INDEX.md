@@ -10,7 +10,7 @@
 | Aspect | Status | Location |
 |--------|--------|----------|
 | **Rust Crates** | 10/10 Complete | `crates/` |
-| **Tests** | 143+ passing | All crates |
+| **Tests** | 150+ passing | All crates |
 | **MCP Server** | ✅ Complete, dual-mode | `crates/totalimage-mcp/` |
 | **Fire Marshal Framework** | ✅ Complete | `crates/fire-marshal/` |
 | **Disk Acquisition** | ✅ Complete | `crates/totalimage-acquire/` |
@@ -21,6 +21,8 @@
 | **E01 Forensic Format** | ✅ Complete | `crates/totalimage-vaults/` |
 | **VHD Differencing** | ✅ Complete | `crates/totalimage-vaults/` |
 | **AFF4 Format** | ✅ Complete | `crates/totalimage-vaults/` |
+| **Vault Factory** | ✅ Complete | `crates/totalimage-vaults/src/factory.rs` |
+| **Docker Deployment** | ✅ Complete | `Dockerfile`, `docker-compose.yml` |
 | **Security Hardening** | Phase 1 complete | `SECURITY.md` |
 | **PYRO Integration Design** | Complete | `steering/PYRO-INTEGRATION-DESIGN.md` |
 | **WinPE Bootable USB** | Design pending | See Section 11 |
@@ -84,7 +86,8 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 | File | Lines | Function |
 |------|-------|----------|
-| `lib.rs` | 43 | Factory pattern, VaultConfig |
+| `lib.rs` | 43 | Exports, VaultConfig |
+| `factory.rs` | 250 | Auto-detection, open_vault() |
 | `raw.rs` | 226 | Raw sector images (.img, .dsk) |
 | `vhd/mod.rs` | 751 | VHD Fixed & Dynamic support |
 | `vhd/types.rs` | 530 | VhdFooter, DynamicHeader, BAT |
@@ -102,7 +105,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 - ✅ AFF4 (Advanced Forensic Format 4, read-only)
 - ❌ NHD, IMZ, Anex86, PCjs
 
-**Tests:** 52 passing (7 Raw + 26 VHD + 10 E01 + 9 AFF4)
+**Tests:** 59 passing (7 Raw + 26 VHD + 10 E01 + 9 AFF4 + 7 Factory)
 
 ---
 
@@ -340,7 +343,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 |-------|------------|-------------|---------|
 | totalimage-core | 4 ✅ | ❌ | ❌ |
 | totalimage-pipeline | 9 ✅ | ❌ | ❌ |
-| totalimage-vaults | 52 ✅ | ❌ | ❌ |
+| totalimage-vaults | 59 ✅ | ❌ | ❌ |
 | totalimage-zones | 20 ✅ | ❌ | ❌ |
 | totalimage-territories | 36 ✅ | ❌ | ❌ |
 | totalimage-acquire | 15 ✅ | ❌ | ❌ |
@@ -349,7 +352,7 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 | totalimage-mcp | ❌ | ❌ | ❌ |
 | fire-marshal | 7 ✅ | ❌ | ❌ |
 
-**Total:** 140 unit tests passing
+**Total:** 147 unit tests passing
 
 ---
 
@@ -389,8 +392,9 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 [x] Add disk acquisition (raw images)
 [x] Add VHD image creation
 [x] Add E01/AFF4 format support
+[x] Create Docker deployment images
+[x] Add vault factory with auto-detection
 [ ] Add TLS/HTTPS support
-[ ] Create Docker deployment images
 [ ] Write integration tests
 [ ] Performance benchmarking
 [ ] Implement WinPE bootable USB
