@@ -9,13 +9,14 @@
 
 Based on comprehensive gap analysis (28 issues identified across 6 crates), this roadmap outlines the path from current state to production-ready deployment.
 
-**Current State:** ~95% feature complete, 100+ tests, 23 gaps remaining (5 fixed)
+**Current State:** ~95% feature complete, 190+ tests, 23 gaps remaining (6 fixed)
 **Target State:** 100% complete, >80% test coverage, PYRO Platform integrated
 
 **Progress (2025-11-26):**
-- ✅ GAP-001, GAP-002, GAP-004, GAP-007 fixed
+- ✅ GAP-001, GAP-002, GAP-004, GAP-005, GAP-007, GAP-008 fixed
 - ✅ NTFS filesystem implemented (864 lines)
-- ✅ 22 MCP protocol tests added
+- ✅ 50 MCP tests added (auth, protocol, tools)
+- ✅ 21 Fire Marshal server tests added
 
 ---
 
@@ -43,8 +44,8 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 | ID | Task | Priority | Hours | Status |
 |----|------|----------|-------|--------|
 | 2.1 | MCP Server tests (auth, protocol) | P0 | 8 | ✅ Done (22 tests) |
-| 2.2 | Fire Marshal server tests | P0 | 6 | Pending |
-| 2.3 | MCP Tools tests (extract, validate) | P0 | 8 | Pending |
+| 2.2 | Fire Marshal server tests | P0 | 6 | ✅ Done (13 tests) |
+| 2.3 | MCP Tools tests (extract, validate) | P0 | 8 | ✅ Done (26 tests) |
 | 2.4 | E01 vault edge case tests | P1 | 6 | Pending |
 | 2.5 | AFF4 vault edge case tests | P1 | 6 | Pending |
 | 2.6 | FAT/exFAT cluster chain tests | P1 | 4 | Pending |
@@ -150,7 +151,7 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 | GAP-002 | Silent E01 decompression failure | `e01/mod.rs:298-304` | ✅ Fixed |
 | GAP-003 | AFF4 chunk offset calculation bug | `aff4/mod.rs:346` | Open |
 | GAP-004 | No MCP server tests | `mcp/server.rs` | ✅ Fixed (22 tests) |
-| GAP-005 | No Fire Marshal tests | `fire-marshal/server.rs` | Open |
+| GAP-005 | No Fire Marshal tests | `fire-marshal/server.rs` | ✅ Fixed (21 tests) |
 
 ### High Priority Issues (P1) - Must Fix Before Production
 
@@ -158,7 +159,7 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 |----|-------|----------|--------|
 | GAP-006 | Path traversal incomplete | `core/security.rs:133` | Open |
 | GAP-007 | Unbounded AFF4 cache | `aff4/mod.rs:375-378` | ✅ Fixed (LRU eviction) |
-| GAP-008 | E01 cache not limited | `e01/mod.rs:73-92` | Open |
+| GAP-008 | E01 cache not limited | `e01/mod.rs:73-92` | ✅ N/A (single-chunk cache) |
 | GAP-009 | VHD chain depth undocumented | `vhd/mod.rs:315-320` | Open |
 | GAP-010 | Missing rustdoc on auth module | `mcp/auth.rs` | Open |
 | GAP-011 | Snappy/LZ4 not implemented | `aff4/mod.rs:369-372` | Open |
@@ -222,9 +223,9 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 | totalimage-vaults | 59 | 85 | +26 |
 | totalimage-zones | 20 | 30 | +10 |
 | totalimage-territories | 36 | 55 | +19 |
-| totalimage-mcp | 5 | 25 | +20 |
-| fire-marshal | 7 | 15 | +8 |
-| **Total** | **131** | **220** | **+89** |
+| totalimage-mcp | 50 | 55 | +5 |
+| fire-marshal | 21 | 25 | +4 |
+| **Total** | **190** | **260** | **+70** |
 
 ---
 

@@ -826,3 +826,390 @@ impl Tool for ValidateIntegrityTool {
         Ok(ToolResult::from_value(serde_json::to_value(&output)?))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    /// Helper to create a test cache in a temporary directory
+    fn create_test_cache() -> Arc<ToolCache> {
+        let temp_dir = tempdir().unwrap();
+        let cache_path = temp_dir.path().join("test_cache.redb");
+        // Leak the tempdir so it lives for the duration of the test
+        std::mem::forget(temp_dir);
+        Arc::new(ToolCache::new(cache_path, "test_tool", "1.0.0").unwrap())
+    }
+
+    // =========================================================================
+    // Tool Info Tests
+    // =========================================================================
+
+    #[test]
+    fn test_tool_info_serialization() {
+        let info = ToolInfo {
+            name: "test_tool".to_string(),
+            version: "1.0.0".to_string(),
+            description: "A test tool".to_string(),
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("test_tool"));
+        assert!(json.contains("1.0.0"));
+    }
+
+    #[test]
+    fn test_tool_info_deserialization() {
+        let json = r#"{"name":"my_tool","version":"2.0.0","description":"Description"}"#;
+        let info: ToolInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(info.name, "my_tool");
+        assert_eq!(info.version, "2.0.0");
+        assert_eq!(info.description, "Description");
+    }
+
+    // =========================================================================
+    // Output Struct Tests
+    // =========================================================================
+
+    #[test]
+    fn test_vault_info_serialization() {
+        let info = VaultInfo {
+            path: "/path/to/image.vhd".to_string(),
+            vault_type: "VHD".to_string(),
+            size_bytes: 1024 * 1024 * 100,
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("image.vhd"));
+        assert!(json.contains("VHD"));
+        assert!(json.contains("104857600"));
+    }
+
+    #[test]
+    fn test_zone_info_serialization() {
+        let info = ZoneInfo {
+            index: 0,
+            offset: 1048576,
+            length: 104857600,
+            zone_type: "NTFS".to_string(),
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"index\":0"));
+        assert!(json.contains("NTFS"));
+    }
+
+    #[test]
+    fn test_filesystem_info_serialization() {
+        let info = FilesystemInfo {
+            zone_index: 1,
+            filesystem_type: "FAT32".to_string(),
+            label: Some("DATA".to_string()),
+            total_size: 1073741824,
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("FAT32"));
+        assert!(json.contains("DATA"));
+    }
+
+    #[test]
+    fn test_filesystem_info_no_label() {
+        let info = FilesystemInfo {
+            zone_index: 0,
+            filesystem_type: "NTFS".to_string(),
+            label: None,
+            total_size: 500000000,
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("NTFS"));
+        assert!(json.contains("null"));
+    }
+
+    #[test]
+    fn test_security_analysis_serialization() {
+        let analysis = SecurityAnalysis {
+            boot_sector_valid: true,
+            partition_table_valid: true,
+            checksum_results: vec![
+                ChecksumResult {
+                    component: "MBR".to_string(),
+                    valid: true,
+                    details: Some("Valid signature".to_string()),
+                }
+            ],
+        };
+
+        let json = serde_json::to_string(&analysis).unwrap();
+        assert!(json.contains("boot_sector_valid"));
+        assert!(json.contains("true"));
+        assert!(json.contains("MBR"));
+    }
+
+    #[test]
+    fn test_file_info_serialization() {
+        let info = FileInfo {
+            name: "README.TXT".to_string(),
+            size: 1024,
+            is_directory: false,
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("README.TXT"));
+        assert!(json.contains("1024"));
+        assert!(json.contains("false"));
+    }
+
+    #[test]
+    fn test_file_info_directory() {
+        let info = FileInfo {
+            name: "Documents".to_string(),
+            size: 0,
+            is_directory: true,
+        };
+
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("Documents"));
+        assert!(json.contains("\"is_directory\":true"));
+    }
+
+    #[test]
+    fn test_integrity_issue_serialization() {
+        let issue = IntegrityIssue {
+            severity: "error".to_string(),
+            component: "GPT Header".to_string(),
+            message: "CRC mismatch".to_string(),
+        };
+
+        let json = serde_json::to_string(&issue).unwrap();
+        assert!(json.contains("error"));
+        assert!(json.contains("GPT Header"));
+        assert!(json.contains("CRC mismatch"));
+    }
+
+    #[test]
+    fn test_validate_integrity_output() {
+        let output = ValidateIntegrityOutput {
+            valid: false,
+            issues: vec![
+                IntegrityIssue {
+                    severity: "warning".to_string(),
+                    component: "Boot Sector".to_string(),
+                    message: "Invalid signature".to_string(),
+                }
+            ],
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("\"valid\":false"));
+        assert!(json.contains("warning"));
+    }
+
+    #[test]
+    fn test_extract_file_output() {
+        let output = ExtractFileOutput {
+            success: true,
+            bytes_extracted: 2048,
+            output_path: "/tmp/extracted.txt".to_string(),
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("true"));
+        assert!(json.contains("2048"));
+        assert!(json.contains("/tmp/extracted.txt"));
+    }
+
+    #[test]
+    fn test_list_files_output() {
+        let output = ListFilesOutput {
+            files: vec![
+                FileInfo { name: "file1.txt".to_string(), size: 100, is_directory: false },
+                FileInfo { name: "dir1".to_string(), size: 0, is_directory: true },
+            ],
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("file1.txt"));
+        assert!(json.contains("dir1"));
+    }
+
+    #[test]
+    fn test_list_partitions_output() {
+        let output = ListPartitionsOutput {
+            partition_table: "GPT".to_string(),
+            zones: vec![
+                ZoneInfo { index: 0, offset: 1048576, length: 100000000, zone_type: "EFI".to_string() },
+            ],
+        };
+
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("GPT"));
+        assert!(json.contains("EFI"));
+    }
+
+    // =========================================================================
+    // Input Struct Tests
+    // =========================================================================
+
+    #[test]
+    fn test_analyze_input_deserialization() {
+        let json = r#"{"path":"/test.vhd","cache":true,"deep_scan":false}"#;
+        let input: AnalyzeDiskImageInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(input.path, "/test.vhd");
+        assert!(input.cache);
+        assert!(!input.deep_scan);
+    }
+
+    #[test]
+    fn test_analyze_input_defaults() {
+        let json = r#"{"path":"/test.vhd"}"#;
+        let input: AnalyzeDiskImageInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(input.path, "/test.vhd");
+        assert!(input.cache); // default is true
+        assert!(!input.deep_scan); // default is false
+    }
+
+    #[test]
+    fn test_list_files_input_defaults() {
+        let json = r#"{"path":"/test.img"}"#;
+        let input: ListFilesInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(input.path, "/test.img");
+        assert_eq!(input.zone_index, 0); // default
+        assert!(input.cache); // default is true
+    }
+
+    #[test]
+    fn test_extract_file_input() {
+        let json = r#"{"image_path":"/disk.img","file_path":"README.TXT","zone_index":1,"output_path":"/tmp/out.txt"}"#;
+        let input: ExtractFileInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(input.image_path, "/disk.img");
+        assert_eq!(input.file_path, "README.TXT");
+        assert_eq!(input.zone_index, 1);
+        assert_eq!(input.output_path, "/tmp/out.txt");
+    }
+
+    #[test]
+    fn test_validate_integrity_input_defaults() {
+        let json = r#"{"path":"/test.vhd"}"#;
+        let input: ValidateIntegrityInput = serde_json::from_str(json).unwrap();
+
+        assert_eq!(input.path, "/test.vhd");
+        assert!(input.check_checksums);
+        assert!(input.check_boot_sectors);
+    }
+
+    // =========================================================================
+    // Tool Definition Tests
+    // =========================================================================
+
+    #[test]
+    fn test_analyze_tool_schema() {
+        let cache = create_test_cache();
+        let tool = AnalyzeDiskImageTool { cache };
+
+        let schema = tool.input_schema();
+        assert!(schema["properties"]["path"].is_object());
+        assert!(schema["properties"]["cache"].is_object());
+        assert!(schema["properties"]["deep_scan"].is_object());
+    }
+
+    #[test]
+    fn test_list_partitions_tool_schema() {
+        let cache = create_test_cache();
+        let tool = ListPartitionsTool { cache };
+
+        let schema = tool.input_schema();
+        assert!(schema["properties"]["path"].is_object());
+        assert!(schema["required"].as_array().unwrap().contains(&json!("path")));
+    }
+
+    #[test]
+    fn test_list_files_tool_schema() {
+        let cache = create_test_cache();
+        let tool = ListFilesTool { cache };
+
+        let schema = tool.input_schema();
+        assert!(schema["properties"]["zone_index"].is_object());
+    }
+
+    #[test]
+    fn test_extract_file_tool_schema() {
+        let tool = ExtractFileTool {};
+
+        let schema = tool.input_schema();
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.contains(&json!("image_path")));
+        assert!(required.contains(&json!("file_path")));
+        assert!(required.contains(&json!("output_path")));
+    }
+
+    #[test]
+    fn test_validate_integrity_tool_schema() {
+        let tool = ValidateIntegrityTool {};
+
+        let schema = tool.input_schema();
+        assert!(schema["properties"]["check_checksums"].is_object());
+        assert!(schema["properties"]["check_boot_sectors"].is_object());
+    }
+
+    // =========================================================================
+    // Tool Enum Tests
+    // =========================================================================
+
+    #[test]
+    fn test_tool_enum_names() {
+        let cache = create_test_cache();
+
+        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache: cache.clone() });
+        assert_eq!(analyze.name(), "analyze_disk_image");
+
+        let list_partitions = ToolEnum::ListPartitions(ListPartitionsTool { cache: cache.clone() });
+        assert_eq!(list_partitions.name(), "list_partitions");
+
+        let list_files = ToolEnum::ListFiles(ListFilesTool { cache });
+        assert_eq!(list_files.name(), "list_files");
+
+        let extract = ToolEnum::ExtractFile(ExtractFileTool {});
+        assert_eq!(extract.name(), "extract_file");
+
+        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool {});
+        assert_eq!(validate.name(), "validate_integrity");
+    }
+
+    #[test]
+    fn test_tool_enum_descriptions() {
+        let cache = create_test_cache();
+
+        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache });
+        assert!(analyze.description().contains("disk image"));
+
+        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool {});
+        assert!(validate.description().contains("integrity"));
+    }
+
+    #[test]
+    fn test_tool_enum_definition() {
+        let cache = create_test_cache();
+        let tool = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache });
+
+        let def = tool.definition();
+        assert_eq!(def.name, "analyze_disk_image");
+        assert!(!def.description.is_empty());
+        assert!(def.input_schema["properties"].is_object());
+    }
+
+    // =========================================================================
+    // Helper Function Tests
+    // =========================================================================
+
+    #[test]
+    fn test_default_true() {
+        assert!(default_true());
+    }
+}

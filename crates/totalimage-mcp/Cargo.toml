@@ -54,3 +54,6 @@ reqwest = { workspace = true, features = ["json"] }
 # Authentication
 jsonwebtoken.workspace = true
 chrono.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
