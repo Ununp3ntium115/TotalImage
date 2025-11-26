@@ -6,6 +6,7 @@
 //! - **FAT**: FAT12, FAT16, and FAT32 file systems
 //! - **ISO 9660**: CD-ROM file system (read-only)
 //! - **exFAT**: Extended FAT file system for flash media
+//! - **NTFS**: Windows NT File System (read-only)
 //!
 //! ## Example
 //!
@@ -23,7 +24,9 @@
 pub mod exfat;
 pub mod fat;
 pub mod iso;
+pub mod ntfs;
 
 pub use exfat::ExfatTerritory;
 pub use fat::FatTerritory;
 pub use iso::IsoTerritory;
+pub use ntfs::NtfsTerritory;

@@ -52,12 +52,13 @@ sha2 = "0.10"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 crc32fast = "1.4"
 hex = "0.4"
+jsonwebtoken = "9.3"
 
 # ENCODING
 encoding_rs = "0.8"
 
 # WEB
-axum = { version = "0.7", features = ["multipart"] }
+axum = { version = "0.7", features = ["multipart", "ws"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["fs", "cors", "timeout"] }
 reqwest = { version = "0.11", features = ["json"] }
@@ -70,6 +71,9 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # CLI
 clap = { version = "4.4", features = ["derive"] }
+
+# TESTING
+tempfile = "3.10"
 
 [profile.release]
 opt-level = 3

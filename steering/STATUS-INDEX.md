@@ -15,6 +15,7 @@
 | **Fire Marshal Framework** | ✅ Complete | `crates/fire-marshal/` |
 | **Disk Acquisition** | ✅ Complete | `crates/totalimage-acquire/` |
 | **Node-RED Integration** | ✅ Complete | `node-red-contrib-totalimage/` |
+| **PYRO Worker Package** | ✅ Complete | `packages/pyro-worker-totalimage/` |
 | **FAT LFN/Subdirs** | ✅ Complete | `crates/totalimage-territories/` |
 | **exFAT Filesystem** | ✅ Complete | `crates/totalimage-territories/` |
 | **VHD Image Creation** | ✅ Complete | `crates/totalimage-acquire/` |
@@ -26,6 +27,8 @@
 | **Security Hardening** | Phase 1 complete | `SECURITY.md` |
 | **PYRO Integration Design** | Complete | `steering/PYRO-INTEGRATION-DESIGN.md` |
 | **WinPE Bootable USB** | Design pending | See Section 11 |
+| **JWT Authentication** | ✅ Complete | `crates/totalimage-mcp/src/auth.rs` |
+| **WebSocket Progress** | ✅ Complete | `crates/totalimage-mcp/src/websocket.rs` |
 | **Frontend (Svelte)** | Not started | Phase 6 |
 
 ---
@@ -215,17 +218,19 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 ---
 
-### 2.8 totalimage-mcp ✅ COMPILES (needs testing)
-**Purpose:** Model Context Protocol server for Claude Desktop
+### 2.8 totalimage-mcp ✅ COMPLETE
+**Purpose:** Model Context Protocol server for Claude Desktop & PYRO Platform
 
 | File | Lines | Function |
 |------|-------|----------|
-| `lib.rs` | 46 | Public API exports |
-| `main.rs` | 166 | Dual-mode CLI entry point |
+| `lib.rs` | 51 | Public API exports |
+| `main.rs` | 186 | Dual-mode CLI entry point |
 | `protocol.rs` | 267 | MCP 2024-11-05 protocol types |
-| `server.rs` | 319 | Dual-mode server implementation |
+| `server.rs` | 380 | Dual-mode server w/ auth & WebSocket |
 | `tools.rs` | 828 | 5 tool implementations |
 | `cache.rs` | 163 | redb result caching |
+| `auth.rs` | 334 | JWT/API key authentication |
+| `websocket.rs` | 200 | Real-time progress updates |
 
 **5 Core Tools:**
 1. `analyze_disk_image` - Comprehensive analysis
@@ -236,10 +241,20 @@ git checkout claude/cryptex-dictionary-analysis-01CjspqdW1JFMfh93H5APV8L
 
 **Modes:**
 - **Standalone:** stdio transport (Claude Desktop)
-- **Integrated:** HTTP transport (Fire Marshal)
+- **Integrated:** HTTP transport (Fire Marshal) + WebSocket
 - **Auto-detect:** Environment-based selection
 
-**Status:** Compiles successfully with minor warnings
+**Authentication:**
+- JWT token validation (HS256, RS256, ES256)
+- API key authentication
+- Environment-based configuration
+
+**WebSocket:**
+- Real-time job progress updates
+- Job subscription filtering
+- Broadcast channel architecture
+
+**Status:** ✅ Complete with auth, WebSocket, health endpoints
 
 ---
 

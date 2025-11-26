@@ -358,24 +358,42 @@ impl Aff4Vault {
             Aff4Compression::Deflate => {
                 let mut decoder = ZlibDecoder::new(Cursor::new(compressed));
                 let mut data = Vec::with_capacity(chunk_size);
-                decoder.read_to_end(&mut data)
-                    .unwrap_or_else(|_| {
-                        // Fall back to raw data if decompression fails
-                        data = compressed.to_vec();
-                        data.len()
-                    });
-                data
+                match decoder.read_to_end(&mut data) {
+                    Ok(_) => data,
+                    Err(e) => {
+                        tracing::warn!(
+                            "AFF4 chunk {} decompression failed: {}. Returning zeros.",
+                            chunk_index, e
+                        );
+                        // Return zeros instead of corrupted data
+                        vec![0u8; chunk_size]
+                    }
+                }
             }
-            _ => {
-                // For unsupported compression, return raw data
-                compressed.to_vec()
+            compression => {
+                // Snappy/LZ4 not yet implemented - return error
+                tracing::warn!(
+                    "AFF4 chunk {} uses unsupported compression: {:?}",
+                    chunk_index, compression
+                );
+                return Err(Error::invalid_vault(format!(
+                    "Unsupported compression type: {:?}",
+                    compression
+                )));
             }
         };
 
-        // Cache the chunk
-        if self.chunk_cache.len() < 16 {
-            self.chunk_cache.insert(chunk_index, decompressed.clone());
+        // Cache the chunk with LRU eviction (max 16 entries, ~16MB at 1MB chunks)
+        const MAX_CACHE_ENTRIES: usize = 16;
+        if self.chunk_cache.len() >= MAX_CACHE_ENTRIES {
+            // Simple eviction: clear oldest entries (keep most recent half)
+            let mut keys: Vec<_> = self.chunk_cache.keys().copied().collect();
+            keys.sort_unstable();
+            for key in keys.iter().take(MAX_CACHE_ENTRIES / 2) {
+                self.chunk_cache.remove(key);
+            }
         }
+        self.chunk_cache.insert(chunk_index, decompressed.clone());
 
         Ok(decompressed)
     }
