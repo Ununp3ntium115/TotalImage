@@ -13,3 +13,5 @@ thiserror.workspace = true
 encoding_rs.workspace = true
 chrono.workspace = true
 serde.workspace = true
+ntfs = "0.4"
+tracing.workspace = true
