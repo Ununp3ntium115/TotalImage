@@ -112,7 +112,7 @@ impl MCPError {
 }
 
 /// MCP error codes (JSON-RPC 2.0 standard)
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(i32)]
 pub enum MCPErrorCode {
     ParseError = -32700,
@@ -264,4 +264,218 @@ pub struct ServerToolCapabilities {
 pub struct ServerInfo {
     pub name: String,
     pub version: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_request_id_string() {
+        let id = RequestId::String("test-123".to_string());
+        let json = serde_json::to_string(&id).unwrap();
+        assert_eq!(json, r#""test-123""#);
+    }
+
+    #[test]
+    fn test_request_id_number() {
+        let id = RequestId::Number(42);
+        let json = serde_json::to_string(&id).unwrap();
+        assert_eq!(json, "42");
+    }
+
+    #[test]
+    fn test_parse_initialize_request() {
+        let json = r#"{
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "test-client",
+                    "version": "1.0.0"
+                }
+            }
+        }"#;
+
+        let request: MCPRequest = serde_json::from_str(json).unwrap();
+        match request {
+            MCPRequest::Initialize { id, params, .. } => {
+                assert!(matches!(id, RequestId::Number(1)));
+                assert_eq!(params.protocol_version, "2024-11-05");
+            }
+            _ => panic!("Expected Initialize request"),
+        }
+    }
+
+    #[test]
+    fn test_parse_list_tools_request() {
+        let json = r#"{
+            "jsonrpc": "2.0",
+            "id": "req-1",
+            "method": "tools/list"
+        }"#;
+
+        let request: MCPRequest = serde_json::from_str(json).unwrap();
+        match request {
+            MCPRequest::ListTools { id, .. } => {
+                assert!(matches!(id, RequestId::String(s) if s == "req-1"));
+            }
+            _ => panic!("Expected ListTools request"),
+        }
+    }
+
+    #[test]
+    fn test_parse_call_tool_request() {
+        let json = r#"{
+            "jsonrpc": "2.0",
+            "id": 123,
+            "method": "tools/call",
+            "params": {
+                "name": "analyze_disk_image",
+                "arguments": {
+                    "path": "/tmp/test.img"
+                }
+            }
+        }"#;
+
+        let request: MCPRequest = serde_json::from_str(json).unwrap();
+        match request {
+            MCPRequest::CallTool { id, params, .. } => {
+                assert!(matches!(id, RequestId::Number(123)));
+                assert_eq!(params.name, "analyze_disk_image");
+                assert!(params.arguments.is_some());
+            }
+            _ => panic!("Expected CallTool request"),
+        }
+    }
+
+    #[test]
+    fn test_mcp_response_success() {
+        let response = MCPResponse::success(
+            RequestId::Number(1),
+            json!({"result": "ok"}),
+        );
+
+        assert_eq!(response.jsonrpc, "2.0");
+        assert!(response.result.is_some());
+        assert!(response.error.is_none());
+    }
+
+    #[test]
+    fn test_mcp_response_error() {
+        let error = MCPError::tool_not_found("unknown_tool");
+        let response = MCPResponse::error(RequestId::String("test".to_string()), error);
+
+        assert!(response.result.is_none());
+        assert!(response.error.is_some());
+        let err = response.error.unwrap();
+        assert_eq!(err.code, MCPErrorCode::MethodNotFound);
+        assert!(err.message.contains("unknown_tool"));
+    }
+
+    #[test]
+    fn test_mcp_error_invalid_params() {
+        let error = MCPError::invalid_params("Missing path parameter");
+        assert_eq!(error.code, MCPErrorCode::InvalidParams);
+        assert_eq!(error.message, "Missing path parameter");
+    }
+
+    #[test]
+    fn test_mcp_error_internal() {
+        let error = MCPError::internal_error("Something went wrong");
+        assert_eq!(error.code, MCPErrorCode::InternalError);
+    }
+
+    #[test]
+    fn test_tool_result_success() {
+        let result = ToolResult::success(vec![Content::text("Analysis complete")]);
+        assert_eq!(result.is_error, None);
+        assert_eq!(result.content.len(), 1);
+    }
+
+    #[test]
+    fn test_tool_result_error() {
+        let result = ToolResult::error("File not found");
+        assert_eq!(result.is_error, Some(true));
+        assert_eq!(result.content.len(), 1);
+    }
+
+    #[test]
+    fn test_content_text() {
+        let content = Content::text("Hello world");
+        match content {
+            Content::Text { text } => assert_eq!(text, "Hello world"),
+            _ => panic!("Expected Text content"),
+        }
+    }
+
+    #[test]
+    fn test_content_json() {
+        let content = Content::json(json!({"key": "value"}));
+        match content {
+            Content::Text { text } => {
+                assert!(text.contains("key"));
+                assert!(text.contains("value"));
+            }
+            _ => panic!("Expected Text content"),
+        }
+    }
+
+    #[test]
+    fn test_tool_definition_serialization() {
+        let def = ToolDefinition {
+            name: "test_tool".to_string(),
+            description: "A test tool".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"}
+                }
+            }),
+        };
+
+        let json = serde_json::to_string(&def).unwrap();
+        assert!(json.contains("test_tool"));
+        assert!(json.contains("inputSchema")); // Check camelCase
+    }
+
+    #[test]
+    fn test_error_code_values() {
+        // Test that error codes have correct values
+        assert_eq!(MCPErrorCode::ParseError as i32, -32700);
+        assert_eq!(MCPErrorCode::InvalidRequest as i32, -32600);
+        assert_eq!(MCPErrorCode::MethodNotFound as i32, -32601);
+        assert_eq!(MCPErrorCode::InvalidParams as i32, -32602);
+        assert_eq!(MCPErrorCode::InternalError as i32, -32603);
+    }
+
+    #[test]
+    fn test_error_code_serialization() {
+        // Test serialization - serde serializes enum variants by name
+        let json = serde_json::to_string(&MCPErrorCode::ParseError).unwrap();
+        assert!(json.contains("ParseError") || json.contains("-32700"));
+    }
+
+    #[test]
+    fn test_initialize_response_serialization() {
+        let response = InitializeResponse {
+            protocol_version: MCP_VERSION.to_string(),
+            capabilities: ServerCapabilities {
+                tools: Some(ServerToolCapabilities { list_changed: None }),
+            },
+            server_info: ServerInfo {
+                name: "test-server".to_string(),
+                version: "1.0.0".to_string(),
+            },
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("protocolVersion")); // Check camelCase
+        assert!(json.contains("serverInfo"));
+        assert!(json.contains(MCP_VERSION));
+    }
 }

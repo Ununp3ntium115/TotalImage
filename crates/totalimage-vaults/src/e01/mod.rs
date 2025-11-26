@@ -297,9 +297,13 @@ impl E01Vault {
 
             match decoder.read_to_end(&mut decompressed) {
                 Ok(_) => Ok(decompressed),
-                Err(_) => {
-                    // Fall back to raw data if decompression fails
-                    Ok(compressed)
+                Err(e) => {
+                    tracing::warn!(
+                        "E01 chunk decompression failed: {}. Returning zeros.",
+                        e
+                    );
+                    // Return zeros instead of corrupted compressed data
+                    Ok(vec![0u8; chunk_size])
                 }
             }
         } else {
