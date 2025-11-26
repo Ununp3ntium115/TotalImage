@@ -323,3 +323,257 @@ async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse 
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::{ToolExecutor, ToolMethod};
+    use std::collections::HashMap;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_fire_marshal_config_default() {
+        let config = FireMarshalConfig::default();
+
+        assert_eq!(config.port, 3001);
+        assert_eq!(config.rate_limit_rps, 100);
+        assert_eq!(config.timeout_secs, 30);
+        assert_eq!(config.max_concurrent, 10);
+        assert_eq!(config.database_path, PathBuf::from("./fire-marshal.redb"));
+    }
+
+    #[test]
+    fn test_fire_marshal_config_custom() {
+        let config = FireMarshalConfig {
+            database_path: PathBuf::from("/tmp/test.redb"),
+            port: 8080,
+            rate_limit_rps: 50,
+            timeout_secs: 60,
+            max_concurrent: 20,
+        };
+
+        assert_eq!(config.port, 8080);
+        assert_eq!(config.rate_limit_rps, 50);
+        assert_eq!(config.timeout_secs, 60);
+        assert_eq!(config.max_concurrent, 20);
+    }
+
+    #[test]
+    fn test_health_response_serialization() {
+        let response = HealthResponse {
+            status: "healthy",
+            version: "1.0.0",
+            tools_registered: 5,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("healthy"));
+        assert!(json.contains("1.0.0"));
+        assert!(json.contains("5"));
+    }
+
+    #[test]
+    fn test_register_response_success() {
+        let response = RegisterResponse {
+            success: true,
+            message: "Tool registered".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("true"));
+        assert!(json.contains("Tool registered"));
+    }
+
+    #[test]
+    fn test_register_response_error() {
+        let response = RegisterResponse {
+            success: false,
+            message: "Tool already exists".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("false"));
+        assert!(json.contains("Tool already exists"));
+    }
+
+    #[test]
+    fn test_list_tools_response_serialization() {
+        let response = ListToolsResponse {
+            tools: vec![
+                ToolSummary {
+                    name: "test-tool".to_string(),
+                    version: "1.0.0".to_string(),
+                    description: "A test tool".to_string(),
+                    healthy: true,
+                    methods: vec!["method1".to_string(), "method2".to_string()],
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("test-tool"));
+        assert!(json.contains("1.0.0"));
+        assert!(json.contains("method1"));
+        assert!(json.contains("method2"));
+    }
+
+    #[test]
+    fn test_stats_response_serialization() {
+        let response = StatsResponse {
+            registered_tools: 10,
+            cache_entries: 100,
+            execution_logs: 500,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("10"));
+        assert!(json.contains("100"));
+        assert!(json.contains("500"));
+    }
+
+    #[test]
+    fn test_fire_marshal_creation() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.redb");
+
+        let config = FireMarshalConfig {
+            database_path: db_path,
+            port: 3001,
+            rate_limit_rps: 100,
+            timeout_secs: 30,
+            max_concurrent: 10,
+        };
+
+        let marshal = FireMarshal::new(config);
+        assert!(marshal.is_ok());
+
+        let marshal = marshal.unwrap();
+        assert_eq!(marshal.registry().count(), 0);
+    }
+
+    #[test]
+    fn test_fire_marshal_register_tool() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.redb");
+
+        let config = FireMarshalConfig {
+            database_path: db_path,
+            port: 3001,
+            rate_limit_rps: 100,
+            timeout_secs: 30,
+            max_concurrent: 10,
+        };
+
+        let marshal = FireMarshal::new(config).unwrap();
+
+        let tool_info = ToolInfo {
+            name: "test-tool".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test tool".to_string(),
+            tools: vec![ToolMethod {
+                name: "analyze".to_string(),
+                description: "Analyze data".to_string(),
+                input_schema: serde_json::json!({"type": "object"}),
+            }],
+            executor: ToolExecutor::Http {
+                url: "http://localhost:3000".to_string(),
+                auth: None,
+            },
+            metadata: HashMap::new(),
+        };
+
+        let result = marshal.register_tool(tool_info);
+        assert!(result.is_ok());
+        assert_eq!(marshal.registry().count(), 1);
+        assert!(marshal.registry().contains("test-tool"));
+    }
+
+    #[test]
+    fn test_fire_marshal_duplicate_registration() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.redb");
+
+        let config = FireMarshalConfig {
+            database_path: db_path,
+            port: 3001,
+            rate_limit_rps: 100,
+            timeout_secs: 30,
+            max_concurrent: 10,
+        };
+
+        let marshal = FireMarshal::new(config).unwrap();
+
+        let tool_info = ToolInfo {
+            name: "test-tool".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test tool".to_string(),
+            tools: vec![],
+            executor: ToolExecutor::Http {
+                url: "http://localhost:3000".to_string(),
+                auth: None,
+            },
+            metadata: HashMap::new(),
+        };
+
+        // First registration should succeed
+        assert!(marshal.register_tool(tool_info.clone()).is_ok());
+
+        // Second registration should fail
+        assert!(marshal.register_tool(tool_info).is_err());
+    }
+
+    #[test]
+    fn test_tool_summary_unhealthy() {
+        let response = ListToolsResponse {
+            tools: vec![
+                ToolSummary {
+                    name: "failing-tool".to_string(),
+                    version: "0.1.0".to_string(),
+                    description: "Tool that is unhealthy".to_string(),
+                    healthy: false,
+                    methods: vec![],
+                },
+            ],
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("failing-tool"));
+        assert!(json.contains("\"healthy\":false"));
+    }
+
+    #[test]
+    fn test_fire_marshal_database_access() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test.redb");
+
+        let config = FireMarshalConfig {
+            database_path: db_path,
+            port: 3001,
+            rate_limit_rps: 100,
+            timeout_secs: 30,
+            max_concurrent: 10,
+        };
+
+        let marshal = FireMarshal::new(config).unwrap();
+
+        // Database should be accessible
+        let stats = marshal.database().stats();
+        assert!(stats.is_ok());
+    }
+
+    #[test]
+    fn test_stats_response_zero_values() {
+        let response = StatsResponse {
+            registered_tools: 0,
+            cache_entries: 0,
+            execution_logs: 0,
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        // All values should be 0
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["registered_tools"], 0);
+        assert_eq!(parsed["cache_entries"], 0);
+        assert_eq!(parsed["execution_logs"], 0);
+    }
+}
