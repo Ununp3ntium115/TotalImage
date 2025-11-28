@@ -15,7 +15,9 @@ totalimage-core = { path = "../totalimage-core" }
 totalimage-vaults = { path = "../totalimage-vaults" }
 totalimage-zones = { path = "../totalimage-zones" }
 totalimage-territories = { path = "../totalimage-territories" }
+totalimage-mcp = { path = "../totalimage-mcp" }
 axum.workspace = true
+axum-server.workspace = true
 tokio.workspace = true
 tower.workspace = true
 tower-http.workspace = true
@@ -25,6 +27,8 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 redb.workspace = true
 bincode.workspace = true
+rustls-pemfile.workspace = true
+jsonwebtoken.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

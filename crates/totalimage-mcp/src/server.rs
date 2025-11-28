@@ -327,7 +327,13 @@ impl MCPServer {
             },
         };
 
-        MCPResponse::success(id, serde_json::to_value(result).unwrap())
+        match serde_json::to_value(result) {
+            Ok(value) => MCPResponse::success(id, value),
+            Err(e) => MCPResponse::error(
+                id,
+                MCPError::internal_error(format!("Failed to serialize response: {}", e)),
+            ),
+        }
     }
 
     async fn handle_list_tools(&self, id: RequestId) -> MCPResponse {
@@ -347,7 +353,13 @@ impl MCPServer {
 
         // Execute tool
         match tool.execute(params.arguments).await {
-            Ok(result) => MCPResponse::success(id, serde_json::to_value(result).unwrap()),
+            Ok(result) => match serde_json::to_value(result) {
+                Ok(value) => MCPResponse::success(id, value),
+                Err(e) => MCPResponse::error(
+                    id,
+                    MCPError::internal_error(format!("Failed to serialize tool result: {}", e)),
+                ),
+            },
             Err(e) => {
                 tracing::error!("Tool execution error: {}", e);
                 MCPResponse::error(

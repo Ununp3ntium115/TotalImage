@@ -8,17 +8,21 @@ mod cache;
 use axum::{
     extract::{Query, State},
     http::{header, Method, StatusCode},
+    middleware,
     response::{IntoResponse, Json},
     routing::get,
     Router,
 };
+use axum_server::tls_rustls::RustlsConfig;
 use cache::MetadataCache;
 use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Seek, SeekFrom};
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use totalimage_core::{validate_file_path, Result as TotalImageResult, Territory, ZoneTable};
+use totalimage_mcp::{auth_middleware, AuthConfig};
 use totalimage_territories::{FatTerritory, IsoTerritory, NtfsTerritory};
 use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
@@ -84,6 +88,23 @@ async fn main() {
         start_time: std::time::Instant::now(),
     };
 
+    // Configure authentication
+    let auth_config = web_auth_config();
+    let auth_enabled = auth_config.enabled;
+    let auth_config = Arc::new(auth_config);
+
+    if auth_enabled {
+        tracing::info!("Authentication enabled");
+        if !auth_config.api_keys.is_empty() {
+            tracing::info!("  API key authentication: {} keys configured", auth_config.api_keys.len());
+        }
+        if auth_config.jwt_secret.is_some() || auth_config.jwt_public_key.is_some() {
+            tracing::info!("  JWT authentication: enabled");
+        }
+    } else {
+        tracing::warn!("Authentication disabled - all endpoints are public");
+    }
+
     // Configure CORS policy
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
@@ -99,15 +120,20 @@ async fn main() {
         .layer(timeout)
         .layer(cors);
 
-    // Build application routes
-    let app = Router::new()
-        // Health and status
-        .route("/health", get(health))
-        .route("/api/status", get(status))
-        // Vault operations
+    // Build protected routes (require auth)
+    let protected_routes = Router::new()
         .route("/api/vault/info", get(vault_info))
         .route("/api/vault/zones", get(vault_zones))
         .route("/api/vault/files", get(vault_files))
+        .route_layer(middleware::from_fn_with_state(auth_config.clone(), auth_middleware));
+
+    // Build application routes
+    let app = Router::new()
+        // Public routes (no auth required)
+        .route("/health", get(health))
+        .route("/api/status", get(status))
+        // Protected routes
+        .merge(protected_routes)
         // Apply middleware and state
         .layer(middleware)
         .with_state(state);
@@ -121,9 +147,18 @@ async fn main() {
             std::process::exit(1);
         });
 
-    tracing::info!("TotalImage Web Server v{} starting on {}", VERSION, addr);
+    // Check for TLS configuration
+    let tls_cert = std::env::var("TOTALIMAGE_TLS_CERT").ok();
+    let tls_key = std::env::var("TOTALIMAGE_TLS_KEY").ok();
+    let use_tls = tls_cert.is_some() && tls_key.is_some();
+
+    let protocol = if use_tls { "https" } else { "http" };
+    tracing::info!("TotalImage Web Server v{} starting on {}://{}", VERSION, protocol, addr);
     println!("TotalImage Web Server v{}", VERSION);
-    println!("   Listening on http://{}", addr);
+    println!("   Listening on {}://{}", protocol, addr);
+    if use_tls {
+        println!("   TLS enabled");
+    }
     println!();
     println!("   Endpoints:");
     println!("   - GET  /health                              Health check");
@@ -132,23 +167,51 @@ async fn main() {
     println!("   - GET  /api/vault/zones?path=<image_file>   Partition listing");
     println!("   - GET  /api/vault/files?path=<img>&zone=N   File listing");
 
-    // Bind listener with proper error handling
-    let listener = match tokio::net::TcpListener::bind(addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            tracing::error!("Failed to bind to {}: {}", addr, e);
-            eprintln!("Error: Failed to bind to {}: {}", addr, e);
-            eprintln!("Hint: Check if the port is already in use or if you have permission to bind");
+    if use_tls {
+        // Start server with TLS
+        let cert_path = PathBuf::from(tls_cert.unwrap());
+        let key_path = PathBuf::from(tls_key.unwrap());
+
+        let tls_config = match RustlsConfig::from_pem_file(&cert_path, &key_path).await {
+            Ok(config) => config,
+            Err(e) => {
+                tracing::error!("Failed to load TLS certificates: {}", e);
+                eprintln!("Error: Failed to load TLS certificates: {}", e);
+                eprintln!("Hint: Check that TOTALIMAGE_TLS_CERT and TOTALIMAGE_TLS_KEY point to valid PEM files");
+                std::process::exit(1);
+            }
+        };
+
+        tracing::info!("TLS configured with cert: {}, key: {}", cert_path.display(), key_path.display());
+
+        let server = axum_server::bind_rustls(addr, tls_config)
+            .serve(app.into_make_service());
+
+        // Note: axum-server doesn't support graceful shutdown the same way,
+        // but we handle SIGTERM at the process level
+        if let Err(e) = server.await {
+            tracing::error!("Server error: {}", e);
             std::process::exit(1);
         }
-    };
+    } else {
+        // Start server without TLS
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::error!("Failed to bind to {}: {}", addr, e);
+                eprintln!("Error: Failed to bind to {}: {}", addr, e);
+                eprintln!("Hint: Check if the port is already in use or if you have permission to bind");
+                std::process::exit(1);
+            }
+        };
 
-    // Run server with graceful shutdown
-    let server = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
+        // Run server with graceful shutdown
+        let server = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
 
-    if let Err(e) = server.await {
-        tracing::error!("Server error: {}", e);
-        std::process::exit(1);
+        if let Err(e) = server.await {
+            tracing::error!("Server error: {}", e);
+            std::process::exit(1);
+        }
     }
 
     tracing::info!("Server shutdown complete");
@@ -602,4 +665,60 @@ fn build_files_response(
         limit,
         files,
     })
+}
+
+/// Create AuthConfig from web-specific environment variables
+///
+/// Uses TOTALIMAGE_WEB_ prefix for configuration:
+/// - TOTALIMAGE_WEB_AUTH_ENABLED: Enable authentication (true/false)
+/// - TOTALIMAGE_WEB_JWT_SECRET: JWT secret key for HMAC algorithms
+/// - TOTALIMAGE_WEB_JWT_PUBLIC_KEY: JWT public key for RSA/EC algorithms
+/// - TOTALIMAGE_WEB_JWT_ALGORITHM: JWT algorithm (HS256, RS256, etc.)
+/// - TOTALIMAGE_WEB_API_KEYS: Comma-separated list of API keys
+/// - TOTALIMAGE_WEB_JWT_ISSUER: Expected JWT issuer
+/// - TOTALIMAGE_WEB_JWT_AUDIENCE: Expected JWT audience
+fn web_auth_config() -> AuthConfig {
+    use jsonwebtoken::Algorithm;
+
+    let enabled = std::env::var("TOTALIMAGE_WEB_AUTH_ENABLED")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false);
+
+    let jwt_secret = std::env::var("TOTALIMAGE_WEB_JWT_SECRET").ok();
+    let jwt_public_key = std::env::var("TOTALIMAGE_WEB_JWT_PUBLIC_KEY").ok();
+
+    let jwt_algorithm = std::env::var("TOTALIMAGE_WEB_JWT_ALGORITHM")
+        .ok()
+        .and_then(|alg| match alg.to_uppercase().as_str() {
+            "HS256" => Some(Algorithm::HS256),
+            "HS384" => Some(Algorithm::HS384),
+            "HS512" => Some(Algorithm::HS512),
+            "RS256" => Some(Algorithm::RS256),
+            "RS384" => Some(Algorithm::RS384),
+            "RS512" => Some(Algorithm::RS512),
+            "ES256" => Some(Algorithm::ES256),
+            "ES384" => Some(Algorithm::ES384),
+            _ => None,
+        })
+        .unwrap_or(Algorithm::HS256);
+
+    let api_keys: Vec<String> = std::env::var("TOTALIMAGE_WEB_API_KEYS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let jwt_issuer = std::env::var("TOTALIMAGE_WEB_JWT_ISSUER").ok();
+    let jwt_audience = std::env::var("TOTALIMAGE_WEB_JWT_AUDIENCE").ok();
+
+    AuthConfig {
+        enabled,
+        jwt_secret,
+        jwt_public_key,
+        jwt_algorithm,
+        api_keys,
+        jwt_issuer,
+        jwt_audience,
+    }
 }
