@@ -402,6 +402,209 @@ mod tests {
     use super::*;
     use std::io::Cursor;
 
+    // ============================================================
+    // Edge Case Tests for E01 Vault
+    // ============================================================
+
+    #[test]
+    fn test_e01_invalid_signature() {
+        // Test that invalid signatures are rejected
+        let mut data = vec![0u8; 100];
+        data[0..8].copy_from_slice(b"INVALID!"); // Wrong signature
+
+        let cursor = Cursor::new(data);
+        let result = E01Vault::from_reader(Box::new(cursor));
+
+        assert!(result.is_err());
+        match result {
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("signature")
+                        || msg.contains("Invalid")
+                        || msg.contains("vault"),
+                    "Expected signature error, got: {}",
+                    msg
+                );
+            }
+            Ok(_) => panic!("Expected error for invalid signature"),
+        }
+    }
+
+    #[test]
+    fn test_e01_truncated_header() {
+        // Test handling of file too small for header
+        let data = vec![0u8; 5]; // Less than 13 bytes needed for header
+        let cursor = Cursor::new(data);
+        let result = E01Vault::from_reader(Box::new(cursor));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_e01_empty_file() {
+        // Test handling of empty file
+        let data: Vec<u8> = vec![];
+        let cursor = Cursor::new(data);
+        let result = E01Vault::from_reader(Box::new(cursor));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_e01_valid_signature_truncated_sections() {
+        // Valid signature but truncated section data
+        let mut data = Vec::new();
+        data.extend_from_slice(&EVF_SIGNATURE);
+        data.push(0x01);
+        data.extend_from_slice(&1u16.to_le_bytes()); // segment 1
+        data.extend_from_slice(&13u16.to_le_bytes()); // fields start
+        // No section data follows
+
+        let cursor = Cursor::new(data);
+        let result = E01Vault::from_reader(Box::new(cursor));
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_e01_chunk_info_creation() {
+        let info = E01ChunkInfo {
+            offset: 1000,
+            compressed_size: 512,
+            is_compressed: true,
+        };
+
+        assert_eq!(info.offset, 1000);
+        assert_eq!(info.compressed_size, 512);
+        assert!(info.is_compressed);
+    }
+
+    #[test]
+    fn test_e01_cache_position_tracking() {
+        let mut cache = E01Cache::new(4096);
+        assert_eq!(cache.position, 0);
+
+        cache.position = 2048;
+        assert_eq!(cache.position, 2048);
+
+        // Test position at end
+        cache.position = 4096;
+        assert_eq!(cache.position, 4096);
+    }
+
+    #[test]
+    fn test_e01_volume_section_edge_cases() {
+        // Test with zero values
+        let volume_zero = E01VolumeSection {
+            media_type: 0,
+            chunk_count: 0,
+            sectors_per_chunk: 0,
+            bytes_per_sector: 0,
+            sector_count: 0,
+            compression: 0,
+        };
+
+        assert_eq!(volume_zero.media_size(), 0);
+        assert_eq!(volume_zero.chunk_size(), 0);
+
+        // Test with maximum reasonable values
+        let volume_large = E01VolumeSection {
+            media_type: 0x01,
+            chunk_count: 1_000_000,
+            sectors_per_chunk: 128,
+            bytes_per_sector: 4096,
+            sector_count: 128_000_000,
+            compression: 1,
+        };
+
+        assert_eq!(volume_large.chunk_size(), 128 * 4096);
+        assert_eq!(volume_large.media_size(), 128_000_000 * 4096);
+    }
+
+    #[test]
+    fn test_e01_compression_all_values() {
+        // Test all known compression types
+        assert_eq!(E01Compression::from(0), E01Compression::None);
+        assert_eq!(E01Compression::from(1), E01Compression::Deflate);
+
+        // Test unknown values
+        for i in 2..10 {
+            assert_eq!(E01Compression::from(i), E01Compression::Unknown(i));
+        }
+
+        // Test boundary values
+        assert_eq!(E01Compression::from(255), E01Compression::Unknown(255));
+    }
+
+    #[test]
+    fn test_e01_media_type_all_values() {
+        use super::types::E01MediaType;
+
+        // Test valid types
+        assert_eq!(E01MediaType::from(0x00), E01MediaType::Removable);
+        assert_eq!(E01MediaType::from(0x01), E01MediaType::Fixed);
+        assert_eq!(E01MediaType::from(0x03), E01MediaType::Optical);
+        assert_eq!(E01MediaType::from(0x0E), E01MediaType::Logical);
+        assert_eq!(E01MediaType::from(0x10), E01MediaType::Memory);
+
+        // Test unknown type
+        assert_eq!(E01MediaType::from(0xFF), E01MediaType::Unknown(0xFF));
+    }
+
+    #[test]
+    fn test_e01_section_type_unknown() {
+        let mut bytes = [0u8; 16];
+        bytes[..7].copy_from_slice(b"garbage");
+
+        let section_type = SectionType::from_bytes(&bytes);
+        // Unknown types are returned with code 0
+        assert!(matches!(section_type, SectionType::Unknown(_)));
+    }
+
+    #[test]
+    fn test_e01_hash_section_display() {
+        let hash = E01HashSection {
+            md5_hash: [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff],
+            checksum: 0x12345678,
+        };
+
+        let hex = hash.md5_hex();
+        assert_eq!(hex, "00112233445566778899aabbccddeeff");
+        assert_eq!(hash.md5_hash.len(), 16);
+    }
+
+    #[test]
+    fn test_e01_file_header_invalid_signature() {
+        let mut data = vec![0u8; 13];
+        data[0..8].copy_from_slice(b"NOTVALID"); // Invalid signature
+        data[9] = 1;
+        data[10] = 0;
+        data[11] = 13;
+        data[12] = 0;
+
+        let result = E01FileHeader::parse(&data);
+        // Should parse but signature check will show invalid
+        if let Ok(header) = result {
+            assert!(!header.is_evf());
+        }
+    }
+
+    #[test]
+    fn test_e01_file_header_ewf_signature() {
+        // Test legacy EWF signature (EnCase 1-6)
+        let mut data = vec![0u8; 13];
+        data[0..8].copy_from_slice(&EWF_SIGNATURE);
+        data[9] = 1;
+        data[10] = 0;
+        data[11] = 13;
+        data[12] = 0;
+
+        let header = E01FileHeader::parse(&data).unwrap();
+        // EWF is different from EVF
+        assert!(!header.is_evf());
+    }
+
     fn create_minimal_e01() -> Vec<u8> {
         let mut data = Vec::new();
 

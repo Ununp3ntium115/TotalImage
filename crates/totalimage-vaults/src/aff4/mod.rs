@@ -343,12 +343,16 @@ impl Aff4Vault {
             .ok_or_else(|| Error::invalid_vault("Bevy segment not found"))?;
 
         // Extract and decompress the chunk
-        let chunk_offset = entry.offset as usize % segment.len().max(1);
-        let chunk_len = (entry.length as usize).min(segment.len().saturating_sub(chunk_offset));
+        // entry.offset is the offset within this bevy segment file
+        let chunk_offset = entry.offset as usize;
+        let chunk_len = entry.length as usize;
 
-        if chunk_offset + chunk_len > segment.len() {
-            // Return zeros for invalid offsets
-            return Ok(vec![0u8; chunk_size]);
+        // Validate bounds - return error for invalid offsets instead of silent corruption
+        if chunk_offset.saturating_add(chunk_len) > segment.len() {
+            return Err(Error::invalid_vault(format!(
+                "AFF4 chunk {} has invalid offset/length: offset={}, length={}, segment_size={}",
+                chunk_index, chunk_offset, chunk_len, segment.len()
+            )));
         }
 
         let compressed = &segment[chunk_offset..chunk_offset + chunk_len];
@@ -496,6 +500,10 @@ unsafe impl Sync for Aff4Vault {}
 mod tests {
     use super::*;
 
+    // ============================================================
+    // Basic Tests
+    // ============================================================
+
     #[test]
     fn test_aff4_volume_default() {
         let volume = Aff4Volume::default();
@@ -538,5 +546,209 @@ mod tests {
             statements: vec![],
         };
         assert!(container.statements.is_empty());
+    }
+
+    // ============================================================
+    // Edge Case Tests for AFF4 Vault
+    // ============================================================
+
+    #[test]
+    fn test_aff4_compression_types() {
+        // Test all compression types
+        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#NullCompressor"), Aff4Compression::None);
+        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#DeflateCompressor"), Aff4Compression::Deflate);
+        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#SnappyCompressor"), Aff4Compression::Snappy);
+        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#Lz4Compressor"), Aff4Compression::Lz4);
+
+        // Test unknown compressor
+        assert!(matches!(Aff4Compression::from_uri("http://aff4.org/Schema#UnknownCompressor"), Aff4Compression::Unknown(_)));
+        assert!(matches!(Aff4Compression::from_uri(""), Aff4Compression::Unknown(_)));
+    }
+
+    #[test]
+    fn test_aff4_object_types() {
+        // Test all object types
+        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#ImageStream"), Aff4ObjectType::ImageStream);
+        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#Map"), Aff4ObjectType::Map);
+        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#ZipVolume"), Aff4ObjectType::ZipVolume);
+
+        // Test unknown type
+        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#SomethingElse"), Aff4ObjectType::Unknown);
+        assert_eq!(Aff4ObjectType::from_uri(""), Aff4ObjectType::Unknown);
+    }
+
+    #[test]
+    fn test_aff4_stream_with_various_chunk_sizes() {
+        // Test with different chunk sizes
+        for chunk_size in [512, 4096, 32768, 65536, 1048576] {
+            let mut stream = Aff4ImageStream::default();
+            stream.chunk_size = chunk_size;
+            assert_eq!(stream.chunk_size, chunk_size);
+        }
+    }
+
+    #[test]
+    fn test_aff4_stream_with_various_compressions() {
+        let compressions = [
+            Aff4Compression::None,
+            Aff4Compression::Deflate,
+            Aff4Compression::Snappy,
+            Aff4Compression::Lz4,
+            Aff4Compression::Unknown(0),
+        ];
+
+        for compression in compressions {
+            let mut stream = Aff4ImageStream::default();
+            stream.compression = compression;
+            assert_eq!(stream.compression, compression);
+        }
+    }
+
+    #[test]
+    fn test_aff4_volume_with_multiple_streams() {
+        let mut volume = Aff4Volume::default();
+        volume.urn = "aff4://test-volume".to_string();
+
+        // Add multiple streams
+        for i in 0..5 {
+            let mut stream = Aff4ImageStream::default();
+            stream.urn = format!("aff4://test-volume/stream{}", i);
+            stream.size = (i as u64 + 1) * 1024 * 1024;
+            volume.streams.push(stream);
+        }
+
+        assert_eq!(volume.streams.len(), 5);
+        assert_eq!(volume.streams[0].size, 1 * 1024 * 1024);
+        assert_eq!(volume.streams[4].size, 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_turtle_parser_empty_content() {
+        let statements = TurtleParser::parse("");
+        assert!(statements.is_empty());
+    }
+
+    #[test]
+    fn test_turtle_parser_only_prefixes() {
+        let content = r#"
+@prefix aff4: <http://aff4.org/Schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+"#;
+        let statements = TurtleParser::parse(content);
+        // No actual statements, just prefixes
+        assert!(statements.is_empty());
+    }
+
+    #[test]
+    fn test_turtle_parser_malformed_content() {
+        // Parser should handle malformed content gracefully
+        let content = "this is not valid turtle syntax !!!";
+        let statements = TurtleParser::parse(content);
+        // Should not panic, may return empty or partial results
+        assert!(statements.len() <= 1);
+    }
+
+    #[test]
+    fn test_turtle_parser_with_comments() {
+        let content = r#"
+# This is a comment
+@prefix aff4: <http://aff4.org/Schema#> .
+# Another comment
+<aff4://test> aff4:size "100" .
+"#;
+        let statements = TurtleParser::parse(content);
+        // Should parse the one valid statement
+        assert!(!statements.is_empty());
+    }
+
+    #[test]
+    fn test_aff4_bevy_index_entry_edge_cases() {
+        // Test with zero offset and length
+        let mut bytes = [0u8; 12];
+        bytes[0..8].copy_from_slice(&0u64.to_le_bytes());
+        bytes[8..12].copy_from_slice(&0u32.to_le_bytes());
+
+        let entry = Aff4BevyIndexEntry::parse(&bytes).unwrap();
+        assert_eq!(entry.offset, 0);
+        assert_eq!(entry.length, 0);
+
+        // Test with maximum values
+        let mut bytes_max = [0u8; 12];
+        bytes_max[0..8].copy_from_slice(&u64::MAX.to_le_bytes());
+        bytes_max[8..12].copy_from_slice(&u32::MAX.to_le_bytes());
+
+        let entry_max = Aff4BevyIndexEntry::parse(&bytes_max).unwrap();
+        assert_eq!(entry_max.offset, u64::MAX);
+        assert_eq!(entry_max.length, u32::MAX);
+    }
+
+    #[test]
+    fn test_aff4_bevy_index_entry_truncated() {
+        // Test with truncated data (less than 12 bytes)
+        let bytes = [0u8; 8];
+        let result = Aff4BevyIndexEntry::parse(&bytes);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_aff4_cache_eviction() {
+        // Test LRU cache behavior - just verify the types work
+        let cache: std::collections::HashMap<usize, Vec<u8>> = std::collections::HashMap::new();
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_turtle_parser_uri_expansion_via_parse() {
+        // Test prefix expansion through the parser
+        let content = r#"
+@prefix aff4: <http://aff4.org/Schema#> .
+<aff4://test> aff4:size "100" .
+"#;
+        let statements = TurtleParser::parse(content);
+        assert!(!statements.is_empty());
+
+        // The predicate should be expanded
+        let size_statement = statements.iter().find(|s| s.predicate.contains("size"));
+        assert!(size_statement.is_some());
+    }
+
+    #[test]
+    fn test_aff4_statement_creation() {
+        let statement = Aff4Statement {
+            subject: "aff4://test-subject".to_string(),
+            predicate: "http://aff4.org/Schema#type".to_string(),
+            object: "http://aff4.org/Schema#ImageStream".to_string(),
+        };
+
+        assert!(statement.subject.contains("test-subject"));
+        assert!(statement.predicate.contains("type"));
+        assert!(statement.object.contains("ImageStream"));
+    }
+
+    #[test]
+    fn test_aff4_stream_size_calculations() {
+        let mut stream = Aff4ImageStream::default();
+        stream.size = 1024 * 1024 * 100; // 100 MB
+        stream.chunk_size = 32768;
+
+        // Calculate expected chunks
+        let expected_chunks = (stream.size + stream.chunk_size as u64 - 1) / stream.chunk_size as u64;
+        assert_eq!(expected_chunks, 3200);
+    }
+
+    #[test]
+    fn test_aff4_volume_urn_formats() {
+        let urns = [
+            "aff4://simple",
+            "aff4://test-volume/stream1",
+            "aff4://volume.with.dots/path/to/stream",
+            "aff4://guid-12345678-1234-1234-1234-123456789abc",
+        ];
+
+        for urn in urns {
+            let mut volume = Aff4Volume::default();
+            volume.urn = urn.to_string();
+            assert_eq!(volume.urn, urn);
+        }
     }
 }

@@ -95,4 +95,19 @@ impl Error {
     pub fn unsupported(msg: impl Into<String>) -> Self {
         Error::Unsupported(msg.into())
     }
+
+    /// Create an invalid path error
+    pub fn invalid_path(msg: impl Into<String>) -> Self {
+        Error::InvalidPath(msg.into())
+    }
+
+    /// Create a permission denied error
+    pub fn permission_denied(msg: impl Into<String>) -> Self {
+        Error::PermissionDenied(msg.into())
+    }
+
+    /// Create an invalid operation error
+    pub fn invalid_operation(msg: impl Into<String>) -> Self {
+        Error::InvalidOperation(msg.into())
+    }
 }

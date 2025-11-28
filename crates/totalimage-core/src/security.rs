@@ -115,9 +115,24 @@ pub fn validate_file_path(path: &str) -> crate::Result<PathBuf> {
         ));
     }
 
+    // Defense in depth: Reject obvious traversal attempts before canonicalization
+    // This catches cases where canonicalization might behave unexpectedly
+    if path.contains("..") {
+        return Err(Error::invalid_path(
+            "Path traversal sequences not allowed".to_string(),
+        ));
+    }
+
+    // Reject control characters and other suspicious sequences
+    if path.chars().any(|c| c.is_control() && c != '\t') {
+        return Err(Error::invalid_path(
+            "Path contains invalid control characters".to_string(),
+        ));
+    }
+
     let path_obj = Path::new(path);
 
-    // Canonicalize to resolve .. and symlinks
+    // Canonicalize to resolve symlinks
     let canonical = path_obj.canonicalize().map_err(|e| {
         Error::not_found(format!("Path does not exist or is inaccessible: {}", e))
     })?;
@@ -130,10 +145,64 @@ pub fn validate_file_path(path: &str) -> crate::Result<PathBuf> {
         )));
     }
 
-    // Additional security: Could check against allowlist of directories
-    // For now, we accept any readable file the process can access
+    Ok(canonical)
+}
+
+/// Validate a file path against an allowed directory whitelist
+///
+/// # Security
+/// Ensures file access is restricted to specific directories
+///
+/// # Arguments
+/// * `path` - The path to validate
+/// * `allowed_dirs` - List of directories that are allowed
+///
+/// # Returns
+/// Canonical absolute path if within allowed directories, error otherwise
+pub fn validate_file_path_in_dirs(path: &str, allowed_dirs: &[&Path]) -> crate::Result<PathBuf> {
+    // First do basic validation
+    let canonical = validate_file_path(path)?;
+
+    // Check if the canonical path is within any of the allowed directories
+    let in_allowed_dir = allowed_dirs.iter().any(|allowed| {
+        if let Ok(allowed_canonical) = allowed.canonicalize() {
+            canonical.starts_with(&allowed_canonical)
+        } else {
+            false
+        }
+    });
+
+    if !in_allowed_dir {
+        return Err(Error::permission_denied(format!(
+            "Access denied: path '{}' is outside allowed directories",
+            path
+        )));
+    }
 
     Ok(canonical)
+}
+
+/// Sanitize a filename extracted from a disk image
+///
+/// # Security
+/// Prevents malicious filenames from causing path traversal or other issues
+///
+/// # Returns
+/// Sanitized filename safe for use in file operations
+pub fn sanitize_extracted_filename(filename: &str) -> String {
+    filename
+        .chars()
+        // Remove path separators
+        .filter(|&c| c != '/' && c != '\\')
+        // Remove null bytes and control characters
+        .filter(|&c| !c.is_control())
+        // Limit length
+        .take(255)
+        .collect::<String>()
+        // Remove leading/trailing dots and spaces
+        .trim_start_matches(|c| c == '.' || c == ' ')
+        .trim_end_matches(|c| c == '.' || c == ' ')
+        .to_string()
 }
 
 /// Validate partition index is within bounds
