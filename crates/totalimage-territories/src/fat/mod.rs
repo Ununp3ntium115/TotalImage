@@ -108,10 +108,8 @@ impl FatTerritory {
             u16::from_le_bytes([self.fat_table[offset], self.fat_table[offset + 1]]) >> 4
         };
 
-        // Check for end of chain markers
-        if value >= 0xFF8 {
-            None
-        } else if value == 0 || value == 1 {
+        // Check for end of chain markers or invalid clusters
+        if value >= 0xFF8 || value == 0 || value == 1 {
             None
         } else {
             Some(value as u32)
@@ -127,10 +125,8 @@ impl FatTerritory {
 
         let value = u16::from_le_bytes([self.fat_table[offset], self.fat_table[offset + 1]]);
 
-        // Check for end of chain markers
-        if value >= 0xFFF8 {
-            None
-        } else if value == 0 || value == 1 {
+        // Check for end of chain markers or invalid clusters
+        if value >= 0xFFF8 || value == 0 || value == 1 {
             None
         } else {
             Some(value as u32)
@@ -151,10 +147,8 @@ impl FatTerritory {
             self.fat_table[offset + 3],
         ]) & 0x0FFFFFFF; // Mask off top 4 bits
 
-        // Check for end of chain markers
-        if value >= 0x0FFFFFF8 {
-            None
-        } else if value == 0 || value == 1 {
+        // Check for end of chain markers or invalid clusters
+        if value >= 0x0FFFFFF8 || value == 0 || value == 1 {
             None
         } else {
             Some(value)

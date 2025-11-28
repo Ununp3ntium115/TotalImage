@@ -268,9 +268,9 @@ impl TurtleParser {
         }
 
         // Handle quoted strings
-        if uri.starts_with('"') {
-            let end = uri[1..].find('"').map(|i| i + 1).unwrap_or(uri.len());
-            return uri[1..end].to_string();
+        if let Some(stripped) = uri.strip_prefix('"') {
+            let end = stripped.find('"').unwrap_or(stripped.len());
+            return stripped[..end].to_string();
         }
 
         // Handle prefixed URIs (prefix:localname)

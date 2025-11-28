@@ -287,16 +287,16 @@ impl VhdDynamicHeader {
 
         // Parse parent unicode name (256 UTF-16 BE characters)
         let mut parent_unicode_name = [0u16; 256];
-        for i in 0..256 {
+        for (i, name_char) in parent_unicode_name.iter_mut().enumerate() {
             let offset = 64 + i * 2;
-            parent_unicode_name[i] = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+            *name_char = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
         }
 
         // Parse parent locator entries (8 entries of 24 bytes each)
         let mut parent_locator_entries = [[0u8; 24]; 8];
-        for i in 0..8 {
+        for (i, entry) in parent_locator_entries.iter_mut().enumerate() {
             let offset = 576 + i * 24;
-            parent_locator_entries[i].copy_from_slice(&bytes[offset..offset + 24]);
+            entry.copy_from_slice(&bytes[offset..offset + 24]);
         }
 
         // Parse remaining reserved bytes

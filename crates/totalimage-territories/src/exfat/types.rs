@@ -204,10 +204,7 @@ impl EntryType {
 
     /// Check if entry is in use
     pub fn is_in_use(&self) -> bool {
-        match self {
-            EntryType::EndOfDirectory | EntryType::DeletedFile | EntryType::Unknown => false,
-            _ => true,
-        }
+        !matches!(self, EntryType::EndOfDirectory | EntryType::DeletedFile | EntryType::Unknown)
     }
 }
 

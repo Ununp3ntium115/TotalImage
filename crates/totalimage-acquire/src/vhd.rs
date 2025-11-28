@@ -488,11 +488,8 @@ fn calculate_chs(size: u64) -> (u16, u8, u8) {
 
         let heads = if cyl_times_heads >= 1024 * 16 {
             16u8
-        } else if cyl_times_heads >= 1024 * 8 {
-            cyl_times_heads.div_ceil(1024) as u8
-        } else if cyl_times_heads >= 1024 * 4 {
-            cyl_times_heads.div_ceil(1024) as u8
         } else if cyl_times_heads >= 1024 * 2 {
+            // For ranges 2-16x, calculate heads from cylinder count
             cyl_times_heads.div_ceil(1024) as u8
         } else {
             cyl_times_heads.div_ceil(1024).max(1) as u8
