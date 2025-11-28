@@ -134,31 +134,37 @@ impl PlatformDatabase {
 
     /// Get a value from the cache
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
-        let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Lock poisoned",
-            )))
-        })?;
-        let read_txn = db.begin_read()?;
-        let table = read_txn.open_table(CACHE_TABLE)?;
+        let expired = {
+            let db = self.db.lock().map_err(|_| {
+                Error::Database(redb::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Lock poisoned",
+                )))
+            })?;
+            let read_txn = db.begin_read()?;
+            let table = read_txn.open_table(CACHE_TABLE)?;
 
-        match table.get(key)? {
-            Some(value) => {
-                let entry: CacheEntry<T> = bincode::deserialize(value.value())?;
+            match table.get(key)? {
+                Some(value) => {
+                    let entry: CacheEntry<T> = bincode::deserialize(value.value())?;
 
-                // Check expiration
-                if entry.is_expired(self.config.ttl_seconds) {
-                    drop(read_txn);
-                    // Remove expired entry
-                    self.remove(key)?;
-                    return Ok(None);
+                    // Check expiration
+                    if entry.is_expired(self.config.ttl_seconds) {
+                        true // Signal to remove
+                    } else {
+                        return Ok(Some(entry.data));
+                    }
                 }
-
-                Ok(Some(entry.data))
+                None => return Ok(None), // Key not found
             }
-            None => Ok(None),
+        }; // Mutex released here
+
+        // Handle expired entry removal outside the lock
+        if expired {
+            self.remove(key)?;
         }
+
+        Ok(None)
     }
 
     /// Remove a value from the cache
