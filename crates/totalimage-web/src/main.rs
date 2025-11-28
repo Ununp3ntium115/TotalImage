@@ -27,6 +27,7 @@ use totalimage_territories::{FatTerritory, IsoTerritory, NtfsTerritory};
 use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
 use tower::ServiceBuilder;
+use tower::limit::ConcurrencyLimitLayer;
 use tower_http::{
     cors::{Any, CorsLayer},
     timeout::TimeoutLayer,
@@ -114,11 +115,20 @@ async fn main() {
     // Configure request timeout (30 seconds)
     let timeout = TimeoutLayer::new(Duration::from_secs(30));
 
+    // Configure concurrency limiting (max concurrent requests)
+    let max_concurrent: usize = std::env::var("TOTALIMAGE_WEB_MAX_CONCURRENT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100);
+    let concurrency_limit = ConcurrencyLimitLayer::new(max_concurrent);
+    tracing::info!("Concurrency limit: {} max concurrent requests", max_concurrent);
+
     // Build middleware stack
     let middleware = ServiceBuilder::new()
         .layer(TraceLayer::new_for_http())
         .layer(timeout)
-        .layer(cors);
+        .layer(cors)
+        .layer(concurrency_limit);
 
     // Build protected routes (require auth)
     let protected_routes = Router::new()

@@ -393,7 +393,18 @@ impl Seek for E01Vault {
     }
 }
 
-// Required for ReadSeek trait
+// SAFETY: E01Vault is safe to Send and Sync because:
+// - `reader` (Box<dyn ReadSeek>): In practice, this is always a File or Cursor<Vec<u8>>
+//   which are Send+Sync. The trait object doesn't guarantee this, so we assert it here.
+// - `file_header`, `volume`, `chunk_table`, `hash`: Plain data structures
+// - `cache` (E01Cache): Contains position and decompressed data buffer
+// - `identifier` (String): Owned string
+//
+// Concurrent access requires external synchronization (e.g., Mutex) because:
+// - position tracking requires exclusive access for sequential reads
+// - cache modifications need synchronization
+//
+// INVARIANT: Callers must ensure the reader passed to E01Vault::open is Send+Sync
 unsafe impl Send for E01Vault {}
 unsafe impl Sync for E01Vault {}
 

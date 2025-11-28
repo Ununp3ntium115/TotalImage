@@ -520,7 +520,16 @@ impl Vault for Aff4Vault {
     }
 }
 
-// Required for ReadSeek trait
+// SAFETY: Aff4Vault is safe to Send and Sync because:
+// - `archive` (ZipArchive<File>): File handles are Send+Sync on all supported platforms
+// - `volume`, `stream`, `bevy_index`: Plain data structures with no interior mutability
+// - `chunk_cache` (HashMap): Owned data, requires external synchronization for concurrent access
+// - `position` (u64): Plain numeric type
+// - `identifier` (String): Owned string
+//
+// Concurrent access requires external synchronization (e.g., Mutex) because:
+// - position tracking requires exclusive access for sequential reads
+// - chunk_cache modifications need synchronization
 unsafe impl Send for Aff4Vault {}
 unsafe impl Sync for Aff4Vault {}
 

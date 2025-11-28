@@ -478,7 +478,14 @@ impl Vault for VhdChainVault {
     }
 }
 
-// Required for ReadSeek trait
+// SAFETY: VhdChainVault is safe to Send and Sync because:
+// - `chain` (Vec<VhdVault>): Each VhdVault contains file handles (Send+Sync on all platforms)
+//   and plain data structures (footer, dynamic_header, bat, block_data)
+// - `virtual_size`, `block_size`, `position`: Plain numeric types
+//
+// Concurrent access requires external synchronization (e.g., Mutex) because:
+// - position tracking requires exclusive access for sequential reads
+// - VHD chain traversal modifies internal state during reads
 unsafe impl Send for VhdChainVault {}
 unsafe impl Sync for VhdChainVault {}
 
