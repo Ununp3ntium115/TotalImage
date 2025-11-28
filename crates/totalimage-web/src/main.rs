@@ -7,23 +7,36 @@ mod cache;
 
 use axum::{
     extract::{Query, State},
-    http::StatusCode,
+    http::{header, Method, StatusCode},
     response::{IntoResponse, Json},
     routing::get,
     Router,
 };
 use cache::MetadataCache;
 use serde::{Deserialize, Serialize};
+use std::io::{Cursor, Seek, SeekFrom};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use totalimage_core::{validate_file_path, Result as TotalImageResult, ZoneTable};
+use std::time::Duration;
+use totalimage_core::{validate_file_path, Result as TotalImageResult, Territory, ZoneTable};
+use totalimage_territories::{FatTerritory, IsoTerritory, NtfsTerritory};
 use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
+use tower::ServiceBuilder;
+use tower_http::{
+    cors::{Any, CorsLayer},
+    timeout::TimeoutLayer,
+    trace::TraceLayer,
+};
+
+/// Application version
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Shared application state
 #[derive(Clone)]
 struct AppState {
     cache: Arc<MetadataCache>,
+    start_time: std::time::Instant,
 }
 
 #[tokio::main]
@@ -66,22 +79,37 @@ async fn main() {
         }
     };
 
-    let state = AppState { cache };
+    let state = AppState {
+        cache,
+        start_time: std::time::Instant::now(),
+    };
 
-    // TODO: Production hardening (SEC-007)
-    // - Add rate limiting: tower::limit::RateLimitLayer
-    // - Add request timeouts: tower::timeout::TimeoutLayer (30s)
-    // - Add concurrency limits: tower::limit::ConcurrencyLimitLayer (10)
-    // - Configure CORS policy for API access
-    // - Add request size limits (10 MB max)
-    // - Enable TLS/HTTPS support
-    // See: steering/GAP-ANALYSIS.md#SEC-007
+    // Configure CORS policy
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+        .allow_origin(Any); // In production, restrict to specific origins
+
+    // Configure request timeout (30 seconds)
+    let timeout = TimeoutLayer::new(Duration::from_secs(30));
+
+    // Build middleware stack
+    let middleware = ServiceBuilder::new()
+        .layer(TraceLayer::new_for_http())
+        .layer(timeout)
+        .layer(cors);
 
     // Build application routes
     let app = Router::new()
+        // Health and status
         .route("/health", get(health))
+        .route("/api/status", get(status))
+        // Vault operations
         .route("/api/vault/info", get(vault_info))
         .route("/api/vault/zones", get(vault_zones))
+        .route("/api/vault/files", get(vault_files))
+        // Apply middleware and state
+        .layer(middleware)
         .with_state(state);
 
     // Configure server address from environment
@@ -93,14 +121,16 @@ async fn main() {
             std::process::exit(1);
         });
 
-    tracing::info!("TotalImage Web Server starting on {}", addr);
-    println!("TotalImage Web Server");
+    tracing::info!("TotalImage Web Server v{} starting on {}", VERSION, addr);
+    println!("TotalImage Web Server v{}", VERSION);
     println!("   Listening on http://{}", addr);
     println!();
     println!("   Endpoints:");
-    println!("   - GET  /health");
-    println!("   - GET  /api/vault/info?path=<image_file>");
-    println!("   - GET  /api/vault/zones?path=<image_file>");
+    println!("   - GET  /health                              Health check");
+    println!("   - GET  /api/status                          Detailed status");
+    println!("   - GET  /api/vault/info?path=<image_file>    Vault metadata");
+    println!("   - GET  /api/vault/zones?path=<image_file>   Partition listing");
+    println!("   - GET  /api/vault/files?path=<img>&zone=N   File listing");
 
     // Bind listener with proper error handling
     let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -153,9 +183,29 @@ async fn shutdown_signal() {
     }
 }
 
-/// Health check endpoint
-async fn health() -> &'static str {
-    "OK"
+/// Health check endpoint - simple response for load balancers
+async fn health() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "healthy"
+    }))
+}
+
+/// Detailed status endpoint
+async fn status(State(state): State<AppState>) -> impl IntoResponse {
+    let uptime = state.start_time.elapsed();
+    let cache_stats = state.cache.stats().ok();
+
+    Json(serde_json::json!({
+        "status": "healthy",
+        "version": VERSION,
+        "uptime_seconds": uptime.as_secs(),
+        "cache": cache_stats.map(|s| serde_json::json!({
+            "vault_info_count": s.vault_info_count,
+            "zone_table_count": s.zone_table_count,
+            "dir_listings_count": s.dir_listings_count,
+            "estimated_size_bytes": s.estimated_size_bytes
+        }))
+    }))
 }
 
 /// Query parameters for vault endpoints
@@ -344,4 +394,212 @@ fn get_vault_zones(image_path: &str) -> TotalImageResult<VaultZonesResponse> {
             zones: Vec::new(),
         })
     }
+}
+
+/// Query parameters for file listing
+#[derive(Deserialize)]
+struct FilesQuery {
+    path: String,
+    #[serde(default)]
+    zone: Option<usize>,
+    #[serde(default = "default_limit")]
+    limit: usize,
+    #[serde(default)]
+    offset: usize,
+}
+
+fn default_limit() -> usize {
+    100
+}
+
+/// File listing response
+#[derive(Serialize, Deserialize, Clone)]
+struct VaultFilesResponse {
+    path: String,
+    zone_index: usize,
+    filesystem_type: String,
+    total_files: usize,
+    offset: usize,
+    limit: usize,
+    files: Vec<FileInfo>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct FileInfo {
+    name: String,
+    path: String,
+    size: u64,
+    is_directory: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    modified: Option<String>,
+}
+
+/// GET /api/vault/files?path=<image_file>&zone=<index>
+async fn vault_files(
+    State(state): State<AppState>,
+    Query(params): Query<FilesQuery>,
+) -> impl IntoResponse {
+    let zone_index = params.zone.unwrap_or(0);
+    let cache_key = format!("{}:zone{}:{}:{}", params.path, zone_index, params.offset, params.limit);
+
+    // Check cache first
+    if let Ok(Some(cached_files)) = state.cache.get_dir_listing::<VaultFilesResponse>(&cache_key) {
+        tracing::info!("Cache HIT for files: {}", cache_key);
+        return (StatusCode::OK, Json(cached_files)).into_response();
+    }
+
+    tracing::info!("Cache MISS for files: {}", cache_key);
+
+    // Get file listing
+    match get_vault_files(&params.path, zone_index, params.offset, params.limit) {
+        Ok(files) => {
+            // Store in cache
+            if let Err(e) = state.cache.set_dir_listing(&cache_key, &files) {
+                tracing::warn!("Failed to cache files: {}", e);
+            }
+            (StatusCode::OK, Json(files)).into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({
+                "error": e.to_string()
+            })),
+        )
+            .into_response(),
+    }
+}
+
+fn get_vault_files(
+    image_path: &str,
+    zone_index: usize,
+    offset: usize,
+    limit: usize,
+) -> TotalImageResult<VaultFilesResponse> {
+    // Validate path to prevent path traversal attacks
+    let path = validate_file_path(image_path)?;
+    let mut vault = open_vault(&path, VaultConfig::default())?;
+
+    let sector_size = 512;
+
+    // Find the zone - clone to avoid lifetime issues
+    let zone = if let Ok(mbr) = MbrZoneTable::parse(vault.content(), sector_size) {
+        mbr.enumerate_zones().get(zone_index).cloned()
+    } else if let Ok(gpt) = GptZoneTable::parse(vault.content(), sector_size) {
+        gpt.enumerate_zones().get(zone_index).cloned()
+    } else {
+        None
+    };
+
+    let zone = zone.ok_or_else(|| {
+        totalimage_core::Error::invalid_operation(format!("Zone {} not found", zone_index))
+    })?;
+
+    // Try to parse the zone as different filesystem types
+    // First, read the zone data into owned buffer
+    let zone_data = {
+        let read_size = zone.length.min(64 * 1024 * 1024) as usize; // Max 64MB for initial read
+        let mut data = vec![0u8; read_size];
+        vault.content().seek(SeekFrom::Start(zone.offset))?;
+        vault.content().read_exact(&mut data)?;
+        data
+    };
+
+    // Try FAT first (most common)
+    {
+        let mut cursor = Cursor::new(&zone_data[..]);
+        if let Ok(fat) = FatTerritory::parse(&mut cursor) {
+            let fs_type = fat.identify().to_string();
+            cursor.seek(SeekFrom::Start(0))?;
+            if let Ok(entries) = fat.list_directory(&mut cursor, "/") {
+                return build_files_response(image_path, zone_index, fs_type, entries, offset, limit);
+            }
+        }
+    }
+
+    // Try NTFS - needs owned cursor since NtfsTerritory takes ownership
+    {
+        let cursor = Cursor::new(zone_data.clone());
+        if let Ok(mut ntfs) = NtfsTerritory::parse(cursor) {
+            let fs_type = ntfs.identify().to_string();
+            if let Ok(entries) = ntfs.read_directory_at_path("/") {
+                return build_files_response(image_path, zone_index, fs_type, entries, offset, limit);
+            }
+        }
+    }
+
+    // Try ISO - ISO needs DirectoryRecord, use root directory
+    {
+        let mut cursor = Cursor::new(&zone_data[..]);
+        if let Ok(iso) = IsoTerritory::parse(&mut cursor) {
+            let fs_type = iso.identify().to_string();
+            // Read root directory entries
+            cursor.seek(SeekFrom::Start(0))?;
+            let root_record = iso.primary_descriptor().root_directory_record.clone();
+            if let Ok(dir_entries) = iso.read_directory(&mut cursor, &root_record) {
+                // Convert DirectoryRecord to OccupantInfo
+                let entries: Vec<totalimage_core::OccupantInfo> = dir_entries
+                    .into_iter()
+                    .map(|rec| totalimage_core::OccupantInfo {
+                        name: rec.file_name(),
+                        is_directory: rec.is_directory(),
+                        size: rec.data_length.get() as u64,
+                        created: None,
+                        modified: None,
+                        accessed: None,
+                        attributes: rec.file_flags as u32,
+                    })
+                    .collect();
+                return build_files_response(image_path, zone_index, fs_type, entries, offset, limit);
+            }
+        }
+    }
+
+    // No recognized filesystem
+    Ok(VaultFilesResponse {
+        path: image_path.to_string(),
+        zone_index,
+        filesystem_type: "Unknown".to_string(),
+        total_files: 0,
+        offset,
+        limit,
+        files: vec![],
+    })
+}
+
+fn build_files_response(
+    image_path: &str,
+    zone_index: usize,
+    fs_type: String,
+    entries: Vec<totalimage_core::OccupantInfo>,
+    offset: usize,
+    limit: usize,
+) -> TotalImageResult<VaultFilesResponse> {
+    let total_files = entries.len();
+
+    let files: Vec<FileInfo> = entries
+        .into_iter()
+        .skip(offset)
+        .take(limit)
+        .map(|entry| {
+            // Construct path from name (entries are at root level)
+            let path = format!("/{}", entry.name);
+            FileInfo {
+                name: entry.name.clone(),
+                path,
+                size: entry.size,
+                is_directory: entry.is_directory,
+                modified: entry.modified.map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
+            }
+        })
+        .collect();
+
+    Ok(VaultFilesResponse {
+        path: image_path.to_string(),
+        zone_index,
+        filesystem_type: fs_type,
+        total_files,
+        offset,
+        limit,
+        files,
+    })
 }
