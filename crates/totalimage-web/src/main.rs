@@ -84,10 +84,17 @@ async fn main() {
         .route("/api/vault/zones", get(vault_zones))
         .with_state(state);
 
-    // Run server
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    tracing::info!("TotalImage Web Server listening on {}", addr);
-    println!("🚀 TotalImage Web Server");
+    // Configure server address from environment
+    let addr: SocketAddr = std::env::var("TOTALIMAGE_WEB_ADDR")
+        .unwrap_or_else(|_| "127.0.0.1:3000".to_string())
+        .parse()
+        .unwrap_or_else(|e| {
+            tracing::error!("Invalid TOTALIMAGE_WEB_ADDR: {}", e);
+            std::process::exit(1);
+        });
+
+    tracing::info!("TotalImage Web Server starting on {}", addr);
+    println!("TotalImage Web Server");
     println!("   Listening on http://{}", addr);
     println!();
     println!("   Endpoints:");
@@ -95,8 +102,55 @@ async fn main() {
     println!("   - GET  /api/vault/info?path=<image_file>");
     println!("   - GET  /api/vault/zones?path=<image_file>");
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    // Bind listener with proper error handling
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("Failed to bind to {}: {}", addr, e);
+            eprintln!("Error: Failed to bind to {}: {}", addr, e);
+            eprintln!("Hint: Check if the port is already in use or if you have permission to bind");
+            std::process::exit(1);
+        }
+    };
+
+    // Run server with graceful shutdown
+    let server = axum::serve(listener, app).with_graceful_shutdown(shutdown_signal());
+
+    if let Err(e) = server.await {
+        tracing::error!("Server error: {}", e);
+        std::process::exit(1);
+    }
+
+    tracing::info!("Server shutdown complete");
+}
+
+/// Graceful shutdown signal handler
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {
+            tracing::info!("Received Ctrl+C, initiating graceful shutdown...");
+        }
+        _ = terminate => {
+            tracing::info!("Received SIGTERM, initiating graceful shutdown...");
+        }
+    }
 }
 
 /// Health check endpoint

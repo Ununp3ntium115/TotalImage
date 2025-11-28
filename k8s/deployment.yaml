@@ -1,0 +1,222 @@
+---
+# TotalImage Kubernetes Deployment
+# Deploy: kubectl apply -f k8s/
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: totalimage-web
+  labels:
+    app: totalimage
+    component: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: totalimage
+      component: web
+  template:
+    metadata:
+      labels:
+        app: totalimage
+        component: web
+    spec:
+      containers:
+        - name: web
+          image: totalimage:latest
+          command: ["/usr/local/bin/totalimage-web"]
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: TOTALIMAGE_WEB_ADDR
+              value: "0.0.0.0:3000"
+            - name: TOTALIMAGE_CACHE_DIR
+              value: "/var/cache/totalimage"
+            - name: RUST_LOG
+              value: "info"
+          envFrom:
+            - configMapRef:
+                name: totalimage-config
+          volumeMounts:
+            - name: cache
+              mountPath: /var/cache/totalimage
+            - name: images
+              mountPath: /data/images
+              readOnly: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: cache
+          emptyDir: {}
+        - name: images
+          persistentVolumeClaim:
+            claimName: totalimage-images
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: totalimage-mcp
+  labels:
+    app: totalimage
+    component: mcp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: totalimage
+      component: mcp
+  template:
+    metadata:
+      labels:
+        app: totalimage
+        component: mcp
+    spec:
+      containers:
+        - name: mcp
+          image: totalimage:latest
+          command: ["/usr/local/bin/totalimage-mcp"]
+          ports:
+            - containerPort: 3002
+              name: http
+          env:
+            - name: TOTALIMAGE_MCP_ADDR
+              value: "0.0.0.0"
+            - name: TOTALIMAGE_MCP_PORT
+              value: "3002"
+            - name: MCP_AUTH_ENABLED
+              value: "true"
+            - name: MCP_WEBSOCKET_ENABLED
+              value: "true"
+            - name: FIRE_MARSHAL_URL
+              value: "http://fire-marshal:3001"
+            - name: RUST_LOG
+              value: "info"
+          envFrom:
+            - configMapRef:
+                name: totalimage-config
+            - secretRef:
+                name: totalimage-secrets
+          volumeMounts:
+            - name: cache
+              mountPath: /var/cache/totalimage
+            - name: images
+              mountPath: /data/images
+              readOnly: true
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: cache
+          emptyDir: {}
+        - name: images
+          persistentVolumeClaim:
+            claimName: totalimage-images
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fire-marshal
+  labels:
+    app: totalimage
+    component: fire-marshal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: totalimage
+      component: fire-marshal
+  template:
+    metadata:
+      labels:
+        app: totalimage
+        component: fire-marshal
+    spec:
+      containers:
+        - name: fire-marshal
+          image: totalimage:latest
+          command: ["/usr/local/bin/fire-marshal"]
+          ports:
+            - containerPort: 3001
+              name: http
+          env:
+            - name: FIRE_MARSHAL_ADDR
+              value: "0.0.0.0"
+            - name: FIRE_MARSHAL_PORT
+              value: "3001"
+            - name: FIRE_MARSHAL_RATE_LIMIT
+              value: "100"
+            - name: RUST_LOG
+              value: "info"
+          envFrom:
+            - configMapRef:
+                name: totalimage-config
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/fire-marshal
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: fire-marshal-data

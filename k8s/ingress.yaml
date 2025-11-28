@@ -1,0 +1,80 @@
+---
+# TotalImage Ingress
+# Requires an Ingress Controller (nginx, traefik, etc.)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: totalimage
+  labels:
+    app: totalimage
+  annotations:
+    # Nginx annotations (adjust for your ingress controller)
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    # Enable CORS
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    # Enable WebSocket for MCP
+    nginx.ingress.kubernetes.io/websocket-services: "totalimage-mcp"
+spec:
+  ingressClassName: nginx
+  rules:
+    # Web API
+    - host: totalimage.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: totalimage-web
+                port:
+                  number: 80
+    # MCP API
+    - host: mcp.totalimage.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: totalimage-mcp
+                port:
+                  number: 3002
+  # TLS configuration (optional)
+  # tls:
+  #   - hosts:
+  #       - totalimage.example.com
+  #       - mcp.totalimage.example.com
+  #     secretName: totalimage-tls
+---
+# Persistent Volume Claims
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: totalimage-images
+  labels:
+    app: totalimage
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 100Gi
+  # Specify storage class for your cluster
+  # storageClassName: standard
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: fire-marshal-data
+  labels:
+    app: totalimage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: standard

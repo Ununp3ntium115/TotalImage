@@ -59,6 +59,9 @@ jsonwebtoken = "9.3"
 # ENCODING
 encoding_rs = "0.8"
 
+# FILESYSTEMS
+ntfs = "0.4"
+
 # WEB
 axum = { version = "0.7", features = ["multipart", "ws"] }
 tower = "0.4"

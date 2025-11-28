@@ -1,0 +1,49 @@
+---
+# TotalImage Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: totalimage-config
+  labels:
+    app: totalimage
+data:
+  # Logging
+  RUST_LOG: "info"
+  RUST_LOG_FORMAT: "json"
+
+  # Cache settings
+  TOTALIMAGE_CACHE_TTL: "3600"
+  TOTALIMAGE_MAX_CACHE_ENTRIES: "1000"
+
+  # Security limits
+  TOTALIMAGE_MAX_EXTRACT_SIZE: "1073741824"
+  TOTALIMAGE_MAX_ALLOCATION: "268435456"
+
+  # Data paths
+  TOTALIMAGE_DATA_DIR: "/data/images"
+  TOTALIMAGE_TEMP_DIR: "/tmp/totalimage"
+
+  # Fire Marshal
+  FIRE_MARSHAL_RATE_LIMIT: "100"
+  FIRE_MARSHAL_TIMEOUT: "30000"
+
+  # MCP Settings
+  MCP_JWT_ISSUER: "totalimage"
+  MCP_JWT_AUDIENCE: "totalimage-api"
+  TOTALIMAGE_TOOL_NAME: "totalimage"
+---
+# Secrets template - copy and customize
+# kubectl create secret generic totalimage-secrets --from-literal=MCP_JWT_SECRET=your-secret-here
+apiVersion: v1
+kind: Secret
+metadata:
+  name: totalimage-secrets
+  labels:
+    app: totalimage
+type: Opaque
+stringData:
+  # REQUIRED: JWT secret (minimum 32 characters)
+  MCP_JWT_SECRET: "CHANGE-THIS-TO-A-SECURE-SECRET-KEY-MIN-32-CHARS"
+
+  # Optional: API keys (comma-separated)
+  # MCP_API_KEYS: "key1,key2,key3"
