@@ -29,6 +29,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use flate2::read::ZlibDecoder;
+use lz4_flex::decompress_size_prepended;
 use totalimage_core::{Error, ReadSeek, Result, Vault};
 
 pub use types::*;
@@ -366,7 +367,7 @@ impl Aff4Vault {
                     Ok(_) => data,
                     Err(e) => {
                         tracing::warn!(
-                            "AFF4 chunk {} decompression failed: {}. Returning zeros.",
+                            "AFF4 chunk {} deflate decompression failed: {}. Returning zeros.",
                             chunk_index, e
                         );
                         // Return zeros instead of corrupted data
@@ -374,8 +375,35 @@ impl Aff4Vault {
                     }
                 }
             }
+            Aff4Compression::Snappy => {
+                // Snappy decompression using the snap crate
+                match snap::raw::Decoder::new().decompress_vec(compressed) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        tracing::warn!(
+                            "AFF4 chunk {} snappy decompression failed: {}. Returning zeros.",
+                            chunk_index, e
+                        );
+                        vec![0u8; chunk_size]
+                    }
+                }
+            }
+            Aff4Compression::Lz4 => {
+                // LZ4 decompression using lz4_flex crate
+                // AFF4 uses LZ4 with size prepended (block format)
+                match decompress_size_prepended(compressed) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        tracing::warn!(
+                            "AFF4 chunk {} lz4 decompression failed: {}. Returning zeros.",
+                            chunk_index, e
+                        );
+                        vec![0u8; chunk_size]
+                    }
+                }
+            }
             compression => {
-                // Snappy/LZ4 not yet implemented - return error
+                // Unknown compression - return error
                 tracing::warn!(
                     "AFF4 chunk {} uses unsupported compression: {:?}",
                     chunk_index, compression
@@ -750,5 +778,93 @@ mod tests {
             volume.urn = urn.to_string();
             assert_eq!(volume.urn, urn);
         }
+    }
+
+    // ============================================================
+    // Snappy/LZ4 Decompression Tests
+    // ============================================================
+
+    #[test]
+    fn test_snappy_decompression() {
+        // Test that snappy decompression works correctly
+        let original = b"Hello, this is test data for snappy compression!";
+
+        // Compress with snappy
+        let compressed = snap::raw::Encoder::new()
+            .compress_vec(original)
+            .expect("Snappy compression failed");
+
+        // Decompress
+        let decompressed = snap::raw::Decoder::new()
+            .decompress_vec(&compressed)
+            .expect("Snappy decompression failed");
+
+        assert_eq!(decompressed, original);
+    }
+
+    #[test]
+    fn test_lz4_decompression() {
+        // Test that LZ4 decompression works correctly
+        let original = b"Hello, this is test data for LZ4 compression!";
+
+        // Compress with LZ4 (with size prepended - the format AFF4 uses)
+        let compressed = lz4_flex::compress_prepend_size(original);
+
+        // Decompress
+        let decompressed =
+            lz4_flex::decompress_size_prepended(&compressed).expect("LZ4 decompression failed");
+
+        assert_eq!(decompressed, original);
+    }
+
+    #[test]
+    fn test_snappy_decompression_larger_data() {
+        // Test with larger, more realistic data
+        let original: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
+
+        let compressed = snap::raw::Encoder::new()
+            .compress_vec(&original)
+            .expect("Snappy compression failed");
+
+        let decompressed = snap::raw::Decoder::new()
+            .decompress_vec(&compressed)
+            .expect("Snappy decompression failed");
+
+        assert_eq!(decompressed, original);
+        // Verify compression actually worked
+        assert!(compressed.len() < original.len());
+    }
+
+    #[test]
+    fn test_lz4_decompression_larger_data() {
+        // Test with larger, more realistic data
+        let original: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
+
+        let compressed = lz4_flex::compress_prepend_size(&original);
+
+        let decompressed =
+            lz4_flex::decompress_size_prepended(&compressed).expect("LZ4 decompression failed");
+
+        assert_eq!(decompressed, original);
+        // Verify compression actually worked
+        assert!(compressed.len() < original.len());
+    }
+
+    #[test]
+    fn test_snappy_invalid_data_handling() {
+        // Test that invalid data is handled gracefully
+        let invalid = vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+
+        let result = snap::raw::Decoder::new().decompress_vec(&invalid);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_lz4_invalid_data_handling() {
+        // Test that invalid data is handled gracefully
+        let invalid = vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+
+        let result = lz4_flex::decompress_size_prepended(&invalid);
+        assert!(result.is_err());
     }
 }

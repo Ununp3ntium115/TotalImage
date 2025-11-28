@@ -16,6 +16,8 @@ uuid.workspace = true
 serde.workspace = true
 flate2.workspace = true
 zip.workspace = true
+snap.workspace = true
+lz4_flex.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

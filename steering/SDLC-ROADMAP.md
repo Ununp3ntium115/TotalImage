@@ -9,17 +9,18 @@
 
 Based on comprehensive gap analysis (28 issues identified across 6 crates), this roadmap outlines the path from current state to production-ready deployment.
 
-**Current State:** ~97% feature complete, 273+ tests, 21 gaps remaining (10 fixed)
+**Current State:** ~98% feature complete, 279+ tests, 17 gaps remaining (11 fixed)
 **Target State:** 100% complete, >80% test coverage, PYRO Platform integrated
 
 **Progress (2025-11-28):**
-- ✅ GAP-001, GAP-002, GAP-003, GAP-004, GAP-005, GAP-006, GAP-007, GAP-008 fixed
+- ✅ GAP-001, GAP-002, GAP-003, GAP-004, GAP-005, GAP-006, GAP-007, GAP-008, GAP-011 fixed
 - ✅ NTFS filesystem implemented (864 lines)
 - ✅ 50 MCP tests added (auth, protocol, tools)
 - ✅ 21 Fire Marshal server tests added
 - ✅ 14 E01 vault edge case tests added
-- ✅ 17 AFF4 vault edge case tests added
+- ✅ 23 AFF4 vault edge case tests added (including Snappy/LZ4)
 - ✅ Path traversal protection enhanced (whitelist validation)
+- ✅ Snappy and LZ4 decompression implemented for AFF4
 
 ---
 
@@ -165,7 +166,7 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 | GAP-008 | E01 cache not limited | `e01/mod.rs:73-92` | ✅ N/A (single-chunk cache) |
 | GAP-009 | VHD chain depth undocumented | `vhd/mod.rs:315-320` | Open |
 | GAP-010 | Missing rustdoc on auth module | `mcp/auth.rs` | Open |
-| GAP-011 | Snappy/LZ4 not implemented | `aff4/mod.rs:369-372` | Open |
+| GAP-011 | Snappy/LZ4 not implemented | `aff4/mod.rs:369-372` | ✅ Fixed |
 
 ### Medium Priority Issues (P2) - Should Fix
 
@@ -223,12 +224,12 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 | Crate | Current | Target | Gap |
 |-------|---------|--------|-----|
 | totalimage-core | 9 | 10 | +1 |
-| totalimage-vaults | 88 | 90 | +2 |
+| totalimage-vaults | 94 | 95 | +1 |
 | totalimage-zones | 22 | 30 | +8 |
 | totalimage-territories | 40 | 55 | +15 |
 | totalimage-mcp | 50 | 55 | +5 |
 | fire-marshal | 21 | 25 | +4 |
-| **Total** | **273** | **310** | **+37** |
+| **Total** | **279** | **315** | **+36** |
 
 ---
 
