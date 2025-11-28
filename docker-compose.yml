@@ -2,10 +2,17 @@
 # Forensic disk image analysis platform
 #
 # Services:
-# - web: REST API server (port 3000)
-# - mcp: MCP server for Claude integration (port 3002)
-# - fire-marshal: Tool orchestration framework (port 3001)
-# - node-red: Visual workflow automation (port 1880)
+# - web: REST API server (default port 3000)
+# - mcp: MCP server for Claude integration (default port 3002)
+# - fire-marshal: Tool orchestration framework (default port 3001)
+# - node-red: Visual workflow automation (default port 1880)
+#
+# Port Configuration:
+# Set these environment variables to customize ports:
+# - TOTALIMAGE_WEB_PORT (default: 3000)
+# - TOTALIMAGE_MCP_PORT (default: 3002)
+# - FIRE_MARSHAL_PORT (default: 3001)
+# - NODERED_PORT (default: 1880)
 
 version: '3.8'
 
@@ -21,13 +28,14 @@ services:
     container_name: totalimage-web
     command: ["totalimage-web"]
     ports:
-      - "3000:3000"
+      - "${TOTALIMAGE_WEB_PORT:-3000}:3000"
     volumes:
       - ./images:/data/images:ro
       - cache-data:/data/cache
     environment:
-      - RUST_LOG=info
+      - RUST_LOG=${RUST_LOG:-info}
       - TOTALIMAGE_CACHE_DIR=/data/cache
+      - TOTALIMAGE_WEB_ADDR=0.0.0.0:3000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
@@ -48,12 +56,12 @@ services:
     container_name: totalimage-mcp
     command: ["totalimage-mcp", "integrated", "--port", "3002"]
     ports:
-      - "3002:3002"
+      - "${TOTALIMAGE_MCP_PORT:-3002}:3002"
     volumes:
       - ./images:/data/images:ro
       - cache-data:/data/cache
     environment:
-      - RUST_LOG=info
+      - RUST_LOG=${RUST_LOG:-info}
       - TOTALIMAGE_CACHE_DIR=/data/cache
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
@@ -75,13 +83,13 @@ services:
     container_name: fire-marshal
     command: ["fire-marshal", "start", "--port", "3001"]
     ports:
-      - "3001:3001"
+      - "${FIRE_MARSHAL_PORT:-3001}:3001"
     volumes:
       - cache-data:/data/cache
     environment:
-      - RUST_LOG=info
-      - FIRE_MARSHAL_RATE_LIMIT=100
-      - FIRE_MARSHAL_TIMEOUT=30000
+      - RUST_LOG=${RUST_LOG:-info}
+      - FIRE_MARSHAL_RATE_LIMIT=${FIRE_MARSHAL_RATE_LIMIT:-100}
+      - FIRE_MARSHAL_TIMEOUT=${FIRE_MARSHAL_TIMEOUT:-30000}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -98,7 +106,7 @@ services:
     image: nodered/node-red:latest
     container_name: totalimage-nodered
     ports:
-      - "1880:1880"
+      - "${NODERED_PORT:-1880}:1880"
     volumes:
       - nodered-data:/data
       - ./node-red-contrib-totalimage:/data/node_modules/node-red-contrib-totalimage:ro
