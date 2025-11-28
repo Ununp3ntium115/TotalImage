@@ -55,8 +55,7 @@ pub struct IntegratedConfig {
 pub struct MCPServer {
     mode: ServerMode,
     tools: Vec<ToolEnum>,
-    /// Cache for tool results (reserved for future use)
-    #[allow(dead_code)]
+    /// Cache for tool results
     cache: Arc<ToolCache>,
 }
 
@@ -351,10 +350,32 @@ impl MCPServer {
             }
         };
 
+        // Generate cache key from tool name and arguments
+        let cache_key = generate_cache_key(&params.name, &params.arguments);
+
+        // Check cache first (only for cacheable tools)
+        if tool.is_cacheable() {
+            if let Ok(Some(cached)) = self.cache.get::<serde_json::Value>(&cache_key) {
+                tracing::debug!("Cache HIT for tool {}: {}", params.name, cache_key);
+                return MCPResponse::success(id, cached);
+            }
+            tracing::debug!("Cache MISS for tool {}: {}", params.name, cache_key);
+        }
+
         // Execute tool
         match tool.execute(params.arguments).await {
-            Ok(result) => match serde_json::to_value(result) {
-                Ok(value) => MCPResponse::success(id, value),
+            Ok(result) => match serde_json::to_value(&result) {
+                Ok(value) => {
+                    // Cache the result if tool is cacheable
+                    if tool.is_cacheable() {
+                        if let Err(e) = self.cache.set(&cache_key, &value) {
+                            tracing::warn!("Failed to cache tool result: {}", e);
+                        } else {
+                            tracing::debug!("Cached result for tool {}: {}", params.name, cache_key);
+                        }
+                    }
+                    MCPResponse::success(id, value)
+                }
                 Err(e) => MCPResponse::error(
                     id,
                     MCPError::internal_error(format!("Failed to serialize tool result: {}", e)),
@@ -369,6 +390,33 @@ impl MCPServer {
             }
         }
     }
+}
+
+/// Generate a cache key from tool name and arguments
+fn generate_cache_key(tool_name: &str, arguments: &Option<serde_json::Value>) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    tool_name.hash(&mut hasher);
+
+    if let Some(args) = arguments {
+        // Sort keys for consistent hashing
+        if let Some(obj) = args.as_object() {
+            let mut keys: Vec<_> = obj.keys().collect();
+            keys.sort();
+            for key in keys {
+                key.hash(&mut hasher);
+                if let Some(value) = obj.get(key) {
+                    value.to_string().hash(&mut hasher);
+                }
+            }
+        } else {
+            args.to_string().hash(&mut hasher);
+        }
+    }
+
+    format!("{}:{:x}", tool_name, hasher.finish())
 }
 
 // HTTP handler state

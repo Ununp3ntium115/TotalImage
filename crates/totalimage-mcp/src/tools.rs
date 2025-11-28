@@ -37,6 +37,12 @@ pub trait Tool: Send + Sync {
     /// Execute the tool with given arguments
     async fn execute(&self, args: Option<Value>) -> Result<ToolResult>;
 
+    /// Whether tool results should be cached
+    /// Default: true for read-only tools, false for tools that modify state
+    fn is_cacheable(&self) -> bool {
+        true
+    }
+
     /// Get tool definition for tools/list response
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
@@ -112,6 +118,18 @@ impl ToolEnum {
             ToolEnum::ListFiles(t) => t.definition(),
             ToolEnum::ExtractFile(t) => t.definition(),
             ToolEnum::ValidateIntegrity(t) => t.definition(),
+        }
+    }
+
+    pub fn is_cacheable(&self) -> bool {
+        match self {
+            // Read-only analysis tools are cacheable
+            ToolEnum::AnalyzeDiskImage(_) => true,
+            ToolEnum::ListPartitions(_) => true,
+            ToolEnum::ListFiles(_) => true,
+            ToolEnum::ValidateIntegrity(_) => true,
+            // ExtractFile creates output files, so not cacheable
+            ToolEnum::ExtractFile(_) => false,
         }
     }
 }
@@ -307,19 +325,21 @@ impl Tool for AnalyzeDiskImageTool {
                 if let Ok(mut partial) = PartialPipeline::new(vault.content(), zone.offset, zone.length) {
                     // Try FAT
                     if let Ok(fat) = FatTerritory::parse(&mut partial) {
+                        let label = fat.banner().ok();
                         filesystems.push(FilesystemInfo {
                             zone_index: idx,
                             filesystem_type: fat.identify().to_string(),
-                            label: Some("FAT Volume".to_string()), // TODO: Extract actual label
+                            label,
                             total_size: zone.length,
                         });
                     }
                     // Try ISO
                     else if let Ok(iso) = IsoTerritory::parse(&mut partial) {
+                        let label = iso.banner().ok();
                         filesystems.push(FilesystemInfo {
                             zone_index: idx,
                             filesystem_type: iso.identify().to_string(),
-                            label: Some("ISO Volume".to_string()), // TODO: Extract actual label
+                            label,
                             total_size: zone.length,
                         });
                     }
@@ -711,10 +731,70 @@ impl Tool for ExtractFileTool {
             file.write_all(&data)?;
 
             data.len() as u64
-        } else if let Ok(_iso) = IsoTerritory::parse(&mut partial) {
-            // TODO: Implement ISO file extraction
-            // ISO extraction requires different methods - see CLI implementation
-            return Err(anyhow::anyhow!("ISO file extraction not yet implemented"));
+        } else if let Ok(iso) = IsoTerritory::parse(&mut partial) {
+            // Get root directory from the ISO territory
+            let root = iso.primary_descriptor().root_directory_record.clone();
+
+            // Parse the file path - handle both root files and nested paths
+            let path_parts: Vec<&str> = input.file_path
+                .trim_start_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            if path_parts.is_empty() {
+                return Err(anyhow::anyhow!("Empty file path"));
+            }
+
+            // Navigate to the target file through directories
+            let mut current_dir = root;
+            for (i, part) in path_parts.iter().enumerate() {
+                let is_last = i == path_parts.len() - 1;
+
+                // Read entries in current directory
+                let entries = iso.read_directory(&mut partial, &current_dir)
+                    .context("Failed to read ISO directory")?;
+
+                // Find matching entry (case-insensitive for ISO compatibility)
+                let target_name = part.to_uppercase();
+                let entry = entries
+                    .into_iter()
+                    .find(|e| {
+                        let name = e.file_name().to_uppercase();
+                        // Handle ISO file naming (;1 version suffix)
+                        let base_name = name.split(';').next().unwrap_or(&name);
+                        base_name == target_name || name == target_name
+                    })
+                    .ok_or_else(|| anyhow::anyhow!("File not found in ISO: {}", part))?;
+
+                if is_last {
+                    // This is the target file - read its data
+                    if entry.is_directory() {
+                        return Err(anyhow::anyhow!("Path is a directory, not a file: {}", part));
+                    }
+
+                    let data = iso.read_file(&mut partial, &entry)
+                        .context("Failed to read file from ISO")?;
+
+                    // Write to output file
+                    let mut file = std::fs::File::create(&output_path)?;
+                    file.write_all(&data)?;
+
+                    return Ok(ToolResult::from_value(serde_json::to_value(&ExtractFileOutput {
+                        success: true,
+                        bytes_extracted: data.len() as u64,
+                        output_path: input.output_path,
+                    })?));
+                } else {
+                    // This is an intermediate directory - navigate into it
+                    if !entry.is_directory() {
+                        return Err(anyhow::anyhow!("Path component is not a directory: {}", part));
+                    }
+                    current_dir = entry;
+                }
+            }
+
+            return Err(anyhow::anyhow!("Failed to navigate to file"));
         } else {
             return Err(anyhow::anyhow!("Unable to read filesystem at zone {}", input.zone_index));
         };

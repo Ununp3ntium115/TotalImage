@@ -6,7 +6,7 @@
 mod cache;
 
 use axum::{
-    extract::{Query, State},
+    extract::{DefaultBodyLimit, Query, State},
     http::{header, Method, StatusCode},
     middleware,
     response::{IntoResponse, Json},
@@ -137,6 +137,14 @@ async fn main() {
         .route("/api/vault/files", get(vault_files))
         .route_layer(middleware::from_fn_with_state(auth_config.clone(), auth_middleware));
 
+    // Configure request body limit (10 MB default)
+    let body_limit_mb: usize = std::env::var("TOTALIMAGE_WEB_BODY_LIMIT_MB")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10);
+    let body_limit = body_limit_mb * 1024 * 1024;
+    tracing::info!("Request body limit: {} MB", body_limit_mb);
+
     // Build application routes
     let app = Router::new()
         // Public routes (no auth required)
@@ -145,6 +153,7 @@ async fn main() {
         // Protected routes
         .merge(protected_routes)
         // Apply middleware and state
+        .layer(DefaultBodyLimit::max(body_limit))
         .layer(middleware)
         .with_state(state);
 
@@ -722,7 +731,7 @@ fn web_auth_config() -> AuthConfig {
     let jwt_issuer = std::env::var("TOTALIMAGE_WEB_JWT_ISSUER").ok();
     let jwt_audience = std::env::var("TOTALIMAGE_WEB_JWT_AUDIENCE").ok();
 
-    AuthConfig {
+    let config = AuthConfig {
         enabled,
         jwt_secret,
         jwt_public_key,
@@ -730,5 +739,72 @@ fn web_auth_config() -> AuthConfig {
         api_keys,
         jwt_issuer,
         jwt_audience,
+    };
+
+    // Validate configuration if auth is enabled
+    if config.enabled {
+        validate_auth_config(&config);
     }
+
+    config
+}
+
+/// Validate authentication configuration at startup
+///
+/// Fails fast if security configuration is weak or invalid:
+/// - JWT secret must be at least 32 characters for HMAC algorithms
+/// - At least one auth method must be configured (JWT or API keys)
+/// - API keys must be at least 16 characters
+fn validate_auth_config(config: &AuthConfig) {
+    let mut errors = Vec::new();
+
+    // Check that at least one auth method is configured
+    let has_jwt = config.jwt_secret.is_some() || config.jwt_public_key.is_some();
+    let has_api_keys = !config.api_keys.is_empty();
+
+    if !has_jwt && !has_api_keys {
+        errors.push("Authentication enabled but no auth method configured. Set TOTALIMAGE_WEB_JWT_SECRET or TOTALIMAGE_WEB_API_KEYS".to_string());
+    }
+
+    // Validate JWT secret length for HMAC algorithms
+    if let Some(ref secret) = config.jwt_secret {
+        use jsonwebtoken::Algorithm;
+        let min_length = match config.jwt_algorithm {
+            Algorithm::HS256 => 32,
+            Algorithm::HS384 => 48,
+            Algorithm::HS512 => 64,
+            _ => 0, // RSA/EC algorithms use public key
+        };
+
+        if min_length > 0 && secret.len() < min_length {
+            errors.push(format!(
+                "JWT secret too short for {:?}. Minimum {} characters, got {}. \
+                 Set TOTALIMAGE_WEB_JWT_SECRET to a longer value.",
+                config.jwt_algorithm, min_length, secret.len()
+            ));
+        }
+    }
+
+    // Validate API key lengths
+    for (i, key) in config.api_keys.iter().enumerate() {
+        if key.len() < 16 {
+            errors.push(format!(
+                "API key {} is too short ({} chars). Minimum 16 characters for security.",
+                i + 1, key.len()
+            ));
+        }
+    }
+
+    // Fail fast if there are validation errors
+    if !errors.is_empty() {
+        eprintln!("\n=== SECURITY CONFIGURATION ERROR ===\n");
+        for error in &errors {
+            eprintln!("  ✗ {}", error);
+        }
+        eprintln!("\n====================================\n");
+        tracing::error!("Security configuration validation failed: {:?}", errors);
+        std::process::exit(1);
+    }
+
+    tracing::info!("Security configuration validated successfully");
 }
