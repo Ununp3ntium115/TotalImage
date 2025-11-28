@@ -274,7 +274,7 @@ impl Aff4Vault {
 
         // If no index found, calculate from stream size
         if index_entries.is_empty() && stream.size > 0 {
-            let chunk_count = (stream.size + stream.chunk_size as u64 - 1) / stream.chunk_size as u64;
+            let chunk_count = stream.size.div_ceil(stream.chunk_size as u64);
             for i in 0..chunk_count {
                 index_entries.push(Aff4BevyIndexEntry {
                     offset: i * stream.chunk_size as u64,
@@ -465,7 +465,7 @@ impl Read for Aff4Vault {
 
             // Read and decompress chunk
             let chunk_data = self.read_chunk(chunk_index)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
 
             // Calculate how much to copy
             let available = chunk_data.len().saturating_sub(chunk_offset);

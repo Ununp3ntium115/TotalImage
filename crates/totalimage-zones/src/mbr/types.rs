@@ -100,7 +100,7 @@ impl MbrPartitionType {
             Self::LinuxNative => "Linux",
             Self::GptProtective => "GPT Protective",
             Self::EfiSystem => "EFI System",
-            Self::Unknown(_b) => return "Unknown",
+            Self::Unknown(_b) => "Unknown",
         }
     }
 }

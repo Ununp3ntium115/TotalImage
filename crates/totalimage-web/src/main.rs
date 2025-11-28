@@ -69,10 +69,6 @@ async fn main() {
                     stats.estimated_size_bytes
                 );
             }
-            // TODO: Implement automatic cache maintenance
-            // - Spawn background task for periodic cleanup_expired()
-            // - Call evict_if_needed() when cache size exceeds MAX_CACHE_SIZE
-            // - Consider using tokio::spawn with interval timer
             Arc::new(cache)
         }
         Err(e) => {
@@ -83,6 +79,10 @@ async fn main() {
             Arc::new(MetadataCache::new(temp_path).expect("Failed to create temp cache"))
         }
     };
+
+    // Spawn background cache maintenance task
+    MetadataCache::spawn_maintenance_task(cache.clone());
+    tracing::info!("Cache maintenance task started (runs every hour)");
 
     let state = AppState {
         cache,

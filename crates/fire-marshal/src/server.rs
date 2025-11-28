@@ -142,7 +142,7 @@ impl FireMarshal {
         let listener = tokio::net::TcpListener::bind(addr).await?;
         axum::serve(listener, app)
             .await
-            .map_err(|e| Error::Io(e.into()))?;
+            .map_err(|e| Error::Io(e))?;
 
         Ok(())
     }

@@ -200,8 +200,8 @@ pub fn sanitize_extracted_filename(filename: &str) -> String {
         .take(255)
         .collect::<String>()
         // Remove leading/trailing dots and spaces
-        .trim_start_matches(|c| c == '.' || c == ' ')
-        .trim_end_matches(|c| c == '.' || c == ' ')
+        .trim_start_matches(['.', ' '])
+        .trim_end_matches(['.', ' '])
         .to_string()
 }
 

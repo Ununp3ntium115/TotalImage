@@ -184,7 +184,7 @@ impl VhdFooter {
         let mut sum: u32 = 0;
         for (i, &byte) in bytes.iter().enumerate() {
             // Skip checksum field (bytes 64-67)
-            if i >= 64 && i < 68 {
+            if (64..68).contains(&i) {
                 continue;
             }
             sum = sum.wrapping_add(byte as u32);
@@ -330,7 +330,7 @@ impl VhdDynamicHeader {
         let mut sum: u32 = 0;
         for (i, &byte) in bytes.iter().enumerate() {
             // Skip checksum field (bytes 36-39)
-            if i >= 36 && i < 40 {
+            if (36..40).contains(&i) {
                 continue;
             }
             sum = sum.wrapping_add(byte as u32);
@@ -385,7 +385,7 @@ pub struct BlockAllocationTable {
 impl BlockAllocationTable {
     /// Parse BAT from raw bytes
     pub fn parse(bytes: &[u8], block_size: u32) -> Result<Self> {
-        if bytes.len() % 4 != 0 {
+        if !bytes.len().is_multiple_of(4) {
             return Err(totalimage_core::Error::invalid_vault(
                 "BAT size must be multiple of 4",
             ));

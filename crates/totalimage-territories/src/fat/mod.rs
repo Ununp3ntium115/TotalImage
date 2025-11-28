@@ -194,7 +194,7 @@ impl FatTerritory {
     /// Uses checked arithmetic to prevent overflow
     pub fn cluster_to_offset(&self, cluster: u32) -> Result<u64> {
         // Cluster 2 is the first data cluster
-        let cluster_offset = if cluster >= 2 { cluster - 2 } else { 0 };
+        let cluster_offset = cluster.saturating_sub(2);
 
         let data_offset = self.bpb.data_offset()? as u64;
         let bytes_per_cluster = self.bpb.bytes_per_cluster()? as u64;
@@ -371,7 +371,7 @@ impl FatTerritory {
         }
 
         // Split path and navigate
-        let parts: Vec<&str> = path.split(|c| c == '/' || c == '\\').filter(|s| !s.is_empty()).collect();
+        let parts: Vec<&str> = path.split(['/', '\\']).filter(|s| !s.is_empty()).collect();
 
         let mut current_entries = self.read_root_directory(stream)?;
 
@@ -423,7 +423,7 @@ impl FatTerritory {
             return Err(Error::not_found("Empty path".to_string()));
         }
 
-        let parts: Vec<&str> = path.split(|c| c == '/' || c == '\\').filter(|s| !s.is_empty()).collect();
+        let parts: Vec<&str> = path.split(['/', '\\']).filter(|s| !s.is_empty()).collect();
 
         if parts.is_empty() {
             return Err(Error::not_found("Empty path".to_string()));

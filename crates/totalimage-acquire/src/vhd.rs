@@ -162,8 +162,8 @@ impl VhdCreator {
         let block_size = self.options.block_size as u64;
 
         // Calculate number of blocks
-        let num_blocks = (source_size + block_size - 1) / block_size;
-        let bat_size = ((num_blocks * 4 + 511) / 512) * 512; // Round up to sector
+        let num_blocks = source_size.div_ceil(block_size);
+        let bat_size = (num_blocks * 4).div_ceil(512) * 512; // Round up to sector
 
         // Footer at start (copy)
         let footer = create_vhd_footer(source_size, VhdType::Dynamic, &self.options.creator_app);
@@ -252,8 +252,8 @@ impl VhdCreator {
 
             if !is_zero {
                 // Write sector bitmap (all sectors present)
-                let bitmap_size = ((block_size / 512 + 7) / 8) as usize;
-                let bitmap_padded = ((bitmap_size + 511) / 512) * 512;
+                let bitmap_size = (block_size / 512).div_ceil(8) as usize;
+                let bitmap_padded = bitmap_size.div_ceil(512) * 512;
                 let bitmap = vec![0xFFu8; bitmap_padded];
                 dest.write_all(&bitmap)?;
                 bytes_written += bitmap_padded as u64;
@@ -401,7 +401,7 @@ fn serialize_footer(footer: &VhdFooterData) -> [u8; 512] {
     // Calculate checksum
     let mut sum: u32 = 0;
     for (i, &byte) in bytes.iter().enumerate() {
-        if i >= 64 && i < 68 {
+        if (64..68).contains(&i) {
             continue; // Skip checksum field
         }
         sum = sum.wrapping_add(byte as u32);
@@ -459,7 +459,7 @@ fn serialize_dynamic_header(header: &VhdDynamicHeaderData) -> [u8; 1024] {
     // Calculate checksum
     let mut sum: u32 = 0;
     for (i, &byte) in bytes.iter().enumerate() {
-        if i >= 36 && i < 40 {
+        if (36..40).contains(&i) {
             continue; // Skip checksum field
         }
         sum = sum.wrapping_add(byte as u32);
@@ -481,7 +481,7 @@ fn calculate_chs(size: u64) -> (u16, u8, u8) {
         let heads = 16u8;
         let sectors = 255u8;
         let cylinders = (total_sectors / (heads as u64 * sectors as u64)) as u16;
-        (cylinders.min(65535), heads, sectors)
+        (cylinders, heads, sectors)
     } else {
         let sectors = 17u8;
         let mut cyl_times_heads = total_sectors / sectors as u64;
@@ -489,19 +489,19 @@ fn calculate_chs(size: u64) -> (u16, u8, u8) {
         let heads = if cyl_times_heads >= 1024 * 16 {
             16u8
         } else if cyl_times_heads >= 1024 * 8 {
-            ((cyl_times_heads + 1023) / 1024) as u8
+            cyl_times_heads.div_ceil(1024) as u8
         } else if cyl_times_heads >= 1024 * 4 {
-            ((cyl_times_heads + 1023) / 1024) as u8
+            cyl_times_heads.div_ceil(1024) as u8
         } else if cyl_times_heads >= 1024 * 2 {
-            ((cyl_times_heads + 1023) / 1024) as u8
+            cyl_times_heads.div_ceil(1024) as u8
         } else {
-            ((cyl_times_heads + 1023) / 1024).max(1) as u8
+            cyl_times_heads.div_ceil(1024).max(1) as u8
         };
 
         let heads = heads.max(4);
         cyl_times_heads = total_sectors / (sectors as u64);
         let cylinders = (cyl_times_heads / heads as u64) as u16;
-        (cylinders.min(65535), heads.min(16), sectors)
+        (cylinders, heads.min(16), sectors)
     };
 
     (cylinders, heads, sectors)

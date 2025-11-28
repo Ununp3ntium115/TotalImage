@@ -226,7 +226,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
         }
 
         let parts: Vec<&str> = path
-            .split(|c| c == '/' || c == '\\')
+            .split(['/', '\\'])
             .filter(|s| !s.is_empty())
             .collect();
 
@@ -277,7 +277,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
         } else {
             // Navigate to the directory
             let parts: Vec<&str> = path
-                .split(|c| c == '/' || c == '\\')
+                .split(['/', '\\'])
                 .filter(|s| !s.is_empty())
                 .collect();
 
@@ -333,7 +333,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
             return Err(Error::not_found("Empty path".to_string()));
         } else {
             let parts: Vec<&str> = path
-                .split(|c| c == '/' || c == '\\')
+                .split(['/', '\\'])
                 .filter(|s| !s.is_empty())
                 .collect();
 
@@ -416,7 +416,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
             return Err(Error::not_found("Empty path".to_string()));
         } else {
             let parts: Vec<&str> = path
-                .split(|c| c == '/' || c == '\\')
+                .split(['/', '\\'])
                 .filter(|s| !s.is_empty())
                 .collect();
 

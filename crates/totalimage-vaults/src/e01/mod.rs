@@ -361,7 +361,7 @@ impl Vault for E01Vault {
 impl Read for E01Vault {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let bytes_read = self.read_at(self.cache.position, buf)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
 
         self.cache.position += bytes_read as u64;
         Ok(bytes_read)
