@@ -148,6 +148,116 @@ pub fn validate_partition_index(index: usize, max: usize) -> crate::Result<()> {
     Ok(())
 }
 
+/// Validate filesystem path components to prevent directory traversal (GAP-006).
+///
+/// This function validates paths within forensic disk images to prevent attackers
+/// from crafting malicious filesystems with ".." or absolute paths that could
+/// traverse outside the intended directory structure.
+///
+/// # Security
+///
+/// Prevents path traversal attacks in filesystem implementations (FAT, exFAT, ISO, NTFS).
+/// Without this validation, a malicious disk image could contain directory entries
+/// with names like "../../../etc/passwd" that could trick filesystem parsers into
+/// accessing unintended locations.
+///
+/// # Validation Rules
+///
+/// - Rejects empty paths
+/// - Rejects paths containing ".." (parent directory)
+/// - Rejects paths containing "." (current directory)
+/// - Rejects absolute paths (starting with / or \)
+/// - Rejects paths with null bytes
+/// - Splits on both / and \ (cross-platform)
+///
+/// # Arguments
+///
+/// * `path` - The filesystem path to validate (e.g., "dir/subdir/file.txt")
+///
+/// # Returns
+///
+/// Vector of validated path components if valid, error otherwise
+///
+/// # Examples
+///
+/// ```
+/// # use totalimage_core::validate_fs_path_components;
+/// // Valid paths
+/// assert!(validate_fs_path_components("dir/file.txt").is_ok());
+/// assert!(validate_fs_path_components("subdir\\another\\file.dat").is_ok());
+///
+/// // Invalid paths (rejected)
+/// assert!(validate_fs_path_components("../etc/passwd").is_err());
+/// assert!(validate_fs_path_components("/absolute/path").is_err());
+/// assert!(validate_fs_path_components("dir/./file").is_err());
+/// ```
+pub fn validate_fs_path_components(path: &str) -> crate::Result<Vec<String>> {
+    // Reject empty paths
+    if path.is_empty() {
+        return Err(Error::invalid_vault(
+            "Empty filesystem path".to_string(),
+        ));
+    }
+
+    // Reject paths with null bytes
+    if path.contains('\0') {
+        return Err(Error::invalid_vault(
+            "Filesystem path contains null byte".to_string(),
+        ));
+    }
+
+    // Reject absolute paths
+    if path.starts_with('/') || path.starts_with('\\') {
+        return Err(Error::invalid_vault(format!(
+            "Absolute filesystem paths not allowed: {}",
+            path
+        )));
+    }
+
+    let path = path.trim_matches('/').trim_matches('\\');
+    
+    // Split path on / or \
+    let parts: Vec<String> = path
+        .split(|c| c == '/' || c == '\\')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    // Validate each component
+    for part in &parts {
+        // Reject ".." (parent directory traversal)
+        if part == ".." {
+            return Err(Error::invalid_vault(format!(
+                "Path traversal detected (..): {}",
+                path
+            )));
+        }
+
+        // Reject "." (current directory - unnecessary and suspicious)
+        if part == "." {
+            return Err(Error::invalid_vault(format!(
+                "Current directory reference (.): {}",
+                path
+            )));
+        }
+
+        // Additional check: Reject any component containing null bytes
+        if part.contains('\0') {
+            return Err(Error::invalid_vault(
+                "Path component contains null byte".to_string(),
+            ));
+        }
+    }
+
+    if parts.is_empty() {
+        return Err(Error::invalid_vault(
+            "No valid path components found".to_string(),
+        ));
+    }
+
+    Ok(parts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

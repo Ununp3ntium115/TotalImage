@@ -286,14 +286,9 @@ impl ExfatTerritory {
         reader: &mut R,
         path: &str,
     ) -> Result<ExfatDirectoryEntry> {
-        let components: Vec<&str> = path
-            .split(['/', '\\'])
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if components.is_empty() {
-            return Err(totalimage_core::Error::invalid_territory("Empty path"));
-        }
+        // Validate path components for security (GAP-006)
+        use totalimage_core::validate_fs_path_components;
+        let components = validate_fs_path_components(path)?;
 
         let mut current_entries = self.read_root_directory(reader)?;
 

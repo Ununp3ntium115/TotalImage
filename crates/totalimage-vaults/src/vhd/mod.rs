@@ -24,6 +24,28 @@ use types::{BlockAllocationTable, ParentLocatorEntry, VhdDynamicHeader, VhdFoote
 
 use crate::VaultConfig;
 
+/// Maximum depth of VHD differencing chain.
+///
+/// This limit prevents infinite recursion and excessive memory usage from
+/// maliciously crafted VHD chains. Each level in the chain requires opening
+/// and parsing a separate VHD file, so deep chains can cause:
+/// - Excessive file handle usage
+/// - Memory exhaustion from loaded metadata
+/// - Stack overflow from recursive lookups
+/// - Denial of service attacks
+///
+/// A limit of 10 is reasonable for legitimate use cases:
+/// - Most snapshot chains are 2-5 levels deep
+/// - Beyond 10 levels indicates misconfiguration or attack
+/// - Allows sufficient flexibility for valid scenarios
+///
+/// ## Security Considerations
+///
+/// Without this limit, an attacker could create a circular reference or
+/// extremely deep chain that causes resource exhaustion. This is classified
+/// as GAP-009 (P1 security issue).
+pub const MAX_VHD_CHAIN_DEPTH: usize = 10;
+
 /// VHD vault - Microsoft Virtual Hard Disk container
 pub struct VhdVault {
     pipeline: Box<dyn ReadSeek>,
@@ -312,11 +334,13 @@ impl VhdChainVault {
                 break;
             }
 
-            // Prevent infinite loops (max chain depth)
-            if chain.len() > 256 {
-                return Err(totalimage_core::Error::invalid_vault(
-                    "VHD parent chain exceeds maximum depth",
-                ));
+            // Prevent infinite loops and resource exhaustion (GAP-009)
+            if chain.len() > MAX_VHD_CHAIN_DEPTH {
+                return Err(totalimage_core::Error::invalid_vault(format!(
+                    "VHD parent chain depth {} exceeds maximum allowed depth {}",
+                    chain.len(),
+                    MAX_VHD_CHAIN_DEPTH
+                )));
             }
         }
 

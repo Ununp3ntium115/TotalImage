@@ -225,10 +225,9 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
                 .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)));
         }
 
-        let parts: Vec<&str> = path
-            .split(|c| c == '/' || c == '\\')
-            .filter(|s| !s.is_empty())
-            .collect();
+        // Validate path components for security (GAP-006)
+        use totalimage_core::validate_fs_path_components;
+        let parts = validate_fs_path_components(path)?;
 
         let mut current = ntfs.root_directory(reader)
             .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)))?;
@@ -249,7 +248,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
 
                 if let Some(Ok(key)) = entry.key() {
                     let name = key.name().to_string_lossy();
-                    if name.eq_ignore_ascii_case(part) {
+                    if name.eq_ignore_ascii_case(&part) {
                         found_ref = Some(entry.file_reference());
                         break;
                     }
@@ -275,11 +274,9 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
             ntfs.root_directory(reader)
                 .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)))?
         } else {
-            // Navigate to the directory
-            let parts: Vec<&str> = path
-                .split(|c| c == '/' || c == '\\')
-                .filter(|s| !s.is_empty())
-                .collect();
+            // Validate path components for security (GAP-006)
+            use totalimage_core::validate_fs_path_components;
+            let parts = validate_fs_path_components(path)?;
 
             let mut current = ntfs.root_directory(reader)
                 .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)))?;
@@ -300,7 +297,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
 
                     if let Some(Ok(key)) = entry.key() {
                         let name = key.name().to_string_lossy();
-                        if name.eq_ignore_ascii_case(part) {
+                        if name.eq_ignore_ascii_case(&part) {
                             found_ref = Some(entry.file_reference());
                             break;
                         }
@@ -332,10 +329,9 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
         let file = if path.is_empty() {
             return Err(Error::not_found("Empty path".to_string()));
         } else {
-            let parts: Vec<&str> = path
-                .split(|c| c == '/' || c == '\\')
-                .filter(|s| !s.is_empty())
-                .collect();
+            // Validate path components for security (GAP-006)
+            use totalimage_core::validate_fs_path_components;
+            let parts = validate_fs_path_components(path)?;
 
             let mut current = ntfs.root_directory(reader)
                 .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)))?;
@@ -355,7 +351,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
 
                     if let Some(Ok(key)) = entry.key() {
                         let name = key.name().to_string_lossy();
-                        if name.eq_ignore_ascii_case(part) {
+                        if name.eq_ignore_ascii_case(&part) {
                             found_ref = Some(entry.file_reference());
                             break;
                         }
@@ -415,10 +411,9 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
         let file = if path.is_empty() {
             return Err(Error::not_found("Empty path".to_string()));
         } else {
-            let parts: Vec<&str> = path
-                .split(|c| c == '/' || c == '\\')
-                .filter(|s| !s.is_empty())
-                .collect();
+            // Validate path components for security (GAP-006)
+            use totalimage_core::validate_fs_path_components;
+            let parts = validate_fs_path_components(path)?;
 
             let mut current = ntfs.root_directory(reader)
                 .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)))?;
@@ -438,7 +433,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
 
                     if let Some(Ok(key)) = entry.key() {
                         let name = key.name().to_string_lossy();
-                        if name.eq_ignore_ascii_case(part) {
+                        if name.eq_ignore_ascii_case(&part) {
                             found_ref = Some(entry.file_reference());
                             break;
                         }
