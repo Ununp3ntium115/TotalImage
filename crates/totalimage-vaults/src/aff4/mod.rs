@@ -33,6 +33,10 @@ use lru::LruCache;
 use std::num::NonZeroUsize;
 use totalimage_core::{Error, ReadSeek, Result, Vault};
 
+// Compression libraries for AFF4 (GAP-011)
+use snap::raw::Decoder as SnappyDecoder;
+use lz4::block::decompress;
+
 pub use types::*;
 
 /// Maximum memory for AFF4 chunk cache (GAP-007).
@@ -406,15 +410,52 @@ impl Aff4Vault {
                 })?;
                 data
             }
-            compression => {
-                // Snappy/LZ4 not yet implemented - return error
-                tracing::warn!(
-                    "AFF4 chunk {} uses unsupported compression: {:?}",
-                    chunk_index, compression
-                );
+            Aff4Compression::Snappy => {
+                // Decompress using Snappy (GAP-011)
+                let mut decoder = SnappyDecoder::new();
+                decoder.decompress_vec(compressed).map_err(|e| {
+                    Error::invalid_vault(format!(
+                        "AFF4 chunk {} snappy decompression failed: {}",
+                        chunk_index, e
+                    ))
+                })?
+            }
+            Aff4Compression::Lz4 => {
+                // Decompress using LZ4 (GAP-011)
+                // LZ4 compressed data has a 4-byte prefix with uncompressed size
+                if compressed.len() < 4 {
+                    return Err(Error::invalid_vault(format!(
+                        "AFF4 chunk {} LZ4 data too small (need at least 4 bytes)",
+                        chunk_index
+                    )));
+                }
+                
+                let uncompressed_size = i32::from_le_bytes([
+                    compressed[0],
+                    compressed[1],
+                    compressed[2],
+                    compressed[3],
+                ]);
+                
+                if uncompressed_size < 0 || uncompressed_size as usize > chunk_size * 2 {
+                    return Err(Error::invalid_vault(format!(
+                        "AFF4 chunk {} LZ4 invalid uncompressed size: {}",
+                        chunk_index, uncompressed_size
+                    )));
+                }
+                
+                decompress(&compressed[4..], Some(uncompressed_size))
+                    .map_err(|e| {
+                        Error::invalid_vault(format!(
+                            "AFF4 chunk {} lz4 decompression failed: {}",
+                            chunk_index, e
+                        ))
+                    })?
+            }
+            Aff4Compression::Unknown(code) => {
                 return Err(Error::invalid_vault(format!(
-                    "Unsupported compression type: {:?}",
-                    compression
+                    "AFF4 chunk {} uses unknown compression code: {}",
+                    chunk_index, code
                 )));
             }
         };

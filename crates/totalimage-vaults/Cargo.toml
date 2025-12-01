@@ -18,6 +18,8 @@ flate2.workspace = true
 zip.workspace = true
 tracing.workspace = true
 lru = "0.12"
+snap = "1.1"
+lz4 = "1.28"
 
 [dev-dependencies]
 tempfile = "3.8"
