@@ -29,9 +29,33 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use flate2::read::ZlibDecoder;
+use lru::LruCache;
+use std::num::NonZeroUsize;
 use totalimage_core::{Error, ReadSeek, Result, Vault};
 
 pub use types::*;
+
+/// Maximum memory for AFF4 chunk cache (GAP-007).
+///
+/// This limit prevents unbounded memory growth from chunk decompression.
+/// Default is 64MB which allows:
+/// - 64 chunks at 1MB each (typical)
+/// - 256 chunks at 256KB each
+/// - Reasonable performance without excessive memory usage
+///
+/// ## Security Considerations
+///
+/// Without this limit, processing large AFF4 images could lead to:
+/// - Memory exhaustion and OOM kills
+/// - Denial of service via crafted images with many unique chunks
+/// - Excessive swap usage degrading system performance
+pub const MAX_AFF4_CACHE_BYTES: usize = 64 * 1024 * 1024; // 64 MB
+
+/// Maximum number of cached chunks (fallback limit).
+///
+/// This provides a hard upper bound on the number of cache entries
+/// even if they're all very small, preventing pathological cases.
+pub const MAX_AFF4_CACHE_ENTRIES: usize = 256;
 
 /// AFF4 Vault - Advanced Forensic Format container
 ///
@@ -45,8 +69,10 @@ pub struct Aff4Vault {
     stream: Aff4ImageStream,
     /// Bevy index (chunk offsets)
     bevy_index: Vec<Aff4BevyIndexEntry>,
-    /// Cached decompressed chunks
-    chunk_cache: HashMap<usize, Vec<u8>>,
+    /// Cached decompressed chunks with LRU eviction (GAP-007)
+    chunk_cache: LruCache<usize, Vec<u8>>,
+    /// Total bytes cached (for memory limit enforcement)
+    cache_bytes: usize,
     /// Current read position
     position: u64,
     /// Identification string
@@ -92,7 +118,10 @@ impl Aff4Vault {
             volume,
             stream,
             bevy_index,
-            chunk_cache: HashMap::new(),
+            chunk_cache: LruCache::new(
+                NonZeroUsize::new(MAX_AFF4_CACHE_ENTRIES).unwrap()
+            ),
+            cache_bytes: 0,
             position: 0,
             identifier,
         })
@@ -390,17 +419,29 @@ impl Aff4Vault {
             }
         };
 
-        // Cache the chunk with LRU eviction (max 16 entries, ~16MB at 1MB chunks)
-        const MAX_CACHE_ENTRIES: usize = 16;
-        if self.chunk_cache.len() >= MAX_CACHE_ENTRIES {
-            // Simple eviction: clear oldest entries (keep most recent half)
-            let mut keys: Vec<_> = self.chunk_cache.keys().copied().collect();
-            keys.sort_unstable();
-            for key in keys.iter().take(MAX_CACHE_ENTRIES / 2) {
-                self.chunk_cache.remove(key);
+        // Cache the chunk with LRU eviction and byte-size tracking (GAP-007)
+        let chunk_bytes = decompressed.len();
+        
+        // Evict old entries if we exceed memory limit
+        while self.cache_bytes + chunk_bytes > MAX_AFF4_CACHE_BYTES 
+            && !self.chunk_cache.is_empty() 
+        {
+            // LRU eviction: pop_lru removes least recently used
+            if let Some((_, evicted_chunk)) = self.chunk_cache.pop_lru() {
+                self.cache_bytes = self.cache_bytes.saturating_sub(evicted_chunk.len());
             }
         }
-        self.chunk_cache.insert(chunk_index, decompressed.clone());
+        
+        // Insert new chunk into cache
+        self.chunk_cache.put(chunk_index, decompressed.clone());
+        self.cache_bytes += chunk_bytes;
+        
+        tracing::trace!(
+            "AFF4 cache: {} entries, {} bytes ({:.1}% of max)",
+            self.chunk_cache.len(),
+            self.cache_bytes,
+            (self.cache_bytes as f64 / MAX_AFF4_CACHE_BYTES as f64) * 100.0
+        );
 
         Ok(decompressed)
     }

@@ -370,8 +370,9 @@ impl FatTerritory {
             return self.read_root_directory(stream);
         }
 
-        // Split path and navigate
-        let parts: Vec<&str> = path.split(|c| c == '/' || c == '\\').filter(|s| !s.is_empty()).collect();
+        // Validate path components for security (GAP-006)
+        use totalimage_core::validate_fs_path_components;
+        let parts = validate_fs_path_components(path)?;
 
         let mut current_entries = self.read_root_directory(stream)?;
 
@@ -423,11 +424,9 @@ impl FatTerritory {
             return Err(Error::not_found("Empty path".to_string()));
         }
 
-        let parts: Vec<&str> = path.split(|c| c == '/' || c == '\\').filter(|s| !s.is_empty()).collect();
-
-        if parts.is_empty() {
-            return Err(Error::not_found("Empty path".to_string()));
-        }
+        // Validate path components for security (GAP-006)
+        use totalimage_core::validate_fs_path_components;
+        let parts = validate_fs_path_components(path)?;
 
         let mut current_entries = self.read_root_directory(stream)?;
 
@@ -507,6 +506,7 @@ impl FatTerritory {
 
     /// Read file data by path (supports subdirectories)
     pub fn read_file_by_path(&self, stream: &mut dyn ReadSeek, path: &str) -> Result<Vec<u8>> {
+        // Path validation done in find_file_by_path (GAP-006)
         let entry = self.find_file_by_path(stream, path)?;
 
         if entry.is_directory() {
