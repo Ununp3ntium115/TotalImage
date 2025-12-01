@@ -5,10 +5,11 @@
 
 ## Executive Summary
 
-**Status:** 🟢 In Progress - Iterations 1 & 2 Complete  
+**Status:** 🟢 In Progress - Iterations 1 & 2 Complete (All P0 + Most P1)  
 **Completed:** 2/8 iterations (25%)  
 **Hours Spent:** 8 + 21 = 29 hours (of 330 total)  
-**Test Status:** ✅ All tests passing (62 vaults + 40 territories + 5 security = 107 total)
+**Test Status:** ✅ All tests passing (62 vaults + 40 territories + 5 security = 107 total)  
+**Security:** P0 100% fixed, P1 43% fixed (6/14 issues resolved)
 
 ---
 
@@ -45,9 +46,11 @@
 
 ### ✅ Iteration 2: Security Hardening (P1) - **COMPLETE**
 **Duration:** 21 hours  
-**Commit:** `0dec17a` - "Iteration 2 Complete: Security Hardening (P1 issues)"
+**Commits:** 
+- `0dec17a` - "Iteration 2 Complete: Security Hardening (P1 issues)"
+- `660d017` - "Iteration 2 Part 2: AFF4 Compression & TLS Documentation"
 
-**Fixed:**
+**Fixed (Part 1):**
 1. **GAP-006:** Complete Path Traversal Prevention (P1)
    - Added `validate_fs_path_components()` to reject ".." and "." in paths
    - Applied to FAT (3 functions), exFAT (1), NTFS (4 functions)
@@ -66,10 +69,27 @@
    - Improved error messages with actual depth reported
    - Impact: Prevents DoS from circular references or deep snapshot chains
 
-**Dependencies Added:**
-- `lru = "0.12"` to `totalimage-vaults/Cargo.toml`
+**Fixed (Part 2):**
+4. **GAP-011:** AFF4 Snappy/LZ4 Decompression (P1)
+   - Implemented Snappy decompression using `snap` crate
+   - Implemented LZ4 decompression using `lz4` crate with size validation
+   - Proper error handling with chunk context for debugging
+   - Impact: Complete AFF4 format support (all compression methods)
 
-**Result:** ✅ All tests passing (62 vaults + 40 territories + 5 security = 107 total)
+5. **SEC-007:** TLS/HTTPS Deployment (P1)
+   - Created comprehensive deployment guide: `steering/TLS-DEPLOYMENT.md`
+   - Covers nginx, Traefik, Caddy, and Kubernetes Ingress
+   - Reverse proxy approach (industry best practice)
+   - Includes rate limiting, security headers, monitoring, troubleshooting
+   - Impact: Production-ready TLS deployment guidance
+
+**Dependencies Added:**
+- `lru = "0.12"` - LRU cache for AFF4
+- `snap = "1.1"` - Snappy decompression
+- `lz4 = "1.28"` - LZ4 decompression
+
+**Result:** ✅ All tests passing (62 vaults + 40 territories + 5 security = 107 total)  
+**P1 Security:** 6/14 issues resolved (43%)
 
 ---
 
@@ -158,7 +178,15 @@
 
 ### Security Posture
 - **P0 Critical Issues:** ✅ 3/3 fixed (100%)
-- **P1 High Issues:** ✅ 3/14 fixed (21%) - 11 remaining
+- **P1 High Issues:** ✅ 6/14 fixed (43%) - 8 remaining
+  - ✅ GAP-001: AFF4 decompression failures
+  - ✅ GAP-002: E01 decompression failures
+  - ✅ GAP-003: AFF4 chunk offset calculation
+  - ✅ GAP-006: Path traversal prevention
+  - ✅ GAP-007: AFF4 cache size limits
+  - ✅ GAP-009: VHD chain depth limit
+  - ✅ GAP-011: Snappy/LZ4 decompression
+  - ✅ SEC-007: TLS/HTTPS (documentation)
 - **P2 Medium Issues:** 0/10 fixed (0%)
 - **P3 Low Issues:** 0/4 fixed (0%)
 
@@ -245,10 +273,11 @@
 - `crates/totalimage-vaults/src/aff4/mod.rs`
 - `crates/totalimage-vaults/src/vhd/mod.rs`
 - `crates/totalimage-vaults/Cargo.toml`
+- `steering/TLS-DEPLOYMENT.md` (new)
 - `Cargo.lock`
 
-**Total Modified:** 10 files  
-**Lines Changed:** ~300 lines (net increase)
+**Total Modified:** 11 files  
+**Lines Changed:** ~960 lines (net increase, including 660-line TLS guide)
 
 ---
 
