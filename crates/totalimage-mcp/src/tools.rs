@@ -9,7 +9,7 @@
 
 use crate::cache::ToolCache;
 use crate::protocol::{ToolDefinition, ToolResult};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -116,12 +116,17 @@ impl ToolEnum {
     }
 }
 
+fn sandbox_host_path(path: &str, allowed_roots: &[PathBuf]) -> Result<PathBuf> {
+    validate_file_path(path, allowed_roots).map_err(|e| anyhow!(e.to_string()))
+}
+
 // ============================================================================
 // Tool 1: Analyze Disk Image
 // ============================================================================
 
 pub struct AnalyzeDiskImageTool {
     pub cache: Arc<ToolCache>,
+    pub allowed_roots: Arc<Vec<PathBuf>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -231,7 +236,7 @@ impl Tool for AnalyzeDiskImageTool {
         tracing::info!("Cache MISS for analyze_disk_image: {}", input.path);
 
         // Validate path
-        let path = validate_file_path(&input.path)
+        let path = sandbox_host_path(&input.path, &self.allowed_roots)
             .context("Invalid file path")?;
 
         // Analyze vault
@@ -351,6 +356,7 @@ impl Tool for AnalyzeDiskImageTool {
 
 pub struct ListPartitionsTool {
     pub cache: Arc<ToolCache>,
+    pub allowed_roots: Arc<Vec<PathBuf>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -407,7 +413,7 @@ impl Tool for ListPartitionsTool {
         }
 
         // Validate path
-        let path = validate_file_path(&input.path)?;
+        let path = sandbox_host_path(&input.path, &self.allowed_roots)?;
 
         // Open vault
         let mut vault = open_vault(&path, VaultConfig::default())?;
@@ -463,6 +469,7 @@ impl Tool for ListPartitionsTool {
 
 pub struct ListFilesTool {
     pub cache: Arc<ToolCache>,
+    pub allowed_roots: Arc<Vec<PathBuf>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -532,7 +539,7 @@ impl Tool for ListFilesTool {
         }
 
         // Validate path
-        let path = validate_file_path(&input.path)?;
+        let path = sandbox_host_path(&input.path, &self.allowed_roots)?;
 
         // Open vault and get zone
         let mut vault = open_vault(&path, VaultConfig::default())?;
@@ -607,7 +614,9 @@ impl Tool for ListFilesTool {
 // Tool 4: Extract File
 // ============================================================================
 
-pub struct ExtractFileTool {}
+pub struct ExtractFileTool {
+    pub allowed_roots: Arc<Vec<PathBuf>>,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ExtractFileInput {
@@ -666,7 +675,7 @@ impl Tool for ExtractFileTool {
             .context("Invalid arguments for extract_file")?;
 
         // Validate paths
-        let image_path = validate_file_path(&input.image_path)?;
+        let image_path = sandbox_host_path(&input.image_path, &self.allowed_roots)?;
         let output_path = PathBuf::from(&input.output_path);
 
         // Open vault
@@ -733,7 +742,9 @@ impl Tool for ExtractFileTool {
 // Tool 5: Validate Integrity
 // ============================================================================
 
-pub struct ValidateIntegrityTool {}
+pub struct ValidateIntegrityTool {
+    pub allowed_roots: Arc<Vec<PathBuf>>,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ValidateIntegrityInput {
@@ -795,7 +806,7 @@ impl Tool for ValidateIntegrityTool {
             .context("Invalid arguments for validate_integrity")?;
 
         // Validate path
-        let path = validate_file_path(&input.path)?;
+        let path = sandbox_host_path(&input.path, &self.allowed_roots)?;
 
         // Open vault
         let mut vault = open_vault(&path, VaultConfig::default())?;
@@ -839,6 +850,12 @@ mod tests {
         // Leak the tempdir so it lives for the duration of the test
         std::mem::forget(temp_dir);
         Arc::new(ToolCache::new(cache_path, "test_tool", "1.0.0").unwrap())
+    }
+
+    fn test_allowed_roots() -> Arc<Vec<PathBuf>> {
+        let cwd = std::env::current_dir().unwrap();
+        let canonical = cwd.canonicalize().unwrap_or(cwd);
+        Arc::new(vec![canonical])
     }
 
     // =========================================================================
@@ -1111,7 +1128,10 @@ mod tests {
     #[test]
     fn test_analyze_tool_schema() {
         let cache = create_test_cache();
-        let tool = AnalyzeDiskImageTool { cache };
+        let tool = AnalyzeDiskImageTool {
+            cache,
+            allowed_roots: test_allowed_roots(),
+        };
 
         let schema = tool.input_schema();
         assert!(schema["properties"]["path"].is_object());
@@ -1122,7 +1142,10 @@ mod tests {
     #[test]
     fn test_list_partitions_tool_schema() {
         let cache = create_test_cache();
-        let tool = ListPartitionsTool { cache };
+        let tool = ListPartitionsTool {
+            cache,
+            allowed_roots: test_allowed_roots(),
+        };
 
         let schema = tool.input_schema();
         assert!(schema["properties"]["path"].is_object());

@@ -4,6 +4,7 @@
 //! common vulnerabilities in disk image parsing.
 
 use crate::Error;
+use std::{env, io};
 use std::path::{Path, PathBuf};
 
 /// Maximum sector size we'll accept (4KB - common for advanced format)
@@ -29,6 +30,60 @@ pub const MAX_CLUSTER_CHAIN_LENGTH: usize = 1_000_000;
 
 /// Maximum file size for memory mapping (16 GB - practical limit for most systems)
 pub const MAX_MMAP_SIZE: u64 = 16 * 1024 * 1024 * 1024;
+
+/// Default environment variable for sandboxing host file access.
+pub const DEFAULT_ALLOWED_ROOT_ENV: &str = "TOTALIMAGE_ALLOWED_ROOT";
+
+/// Load allowed filesystem roots from the default environment variable.
+pub fn allowed_roots_from_env() -> crate::Result<Vec<PathBuf>> {
+    allowed_roots_from_env_var(DEFAULT_ALLOWED_ROOT_ENV)
+}
+
+/// Load allowed filesystem roots from a specific environment variable.
+///
+/// The variable should contain a platform-specific path list (e.g. `:/data:/images`
+/// on Unix, `C:\\Images;D:\\Archives` on Windows). Each entry must exist and be a directory.
+pub fn allowed_roots_from_env_var(var_name: &str) -> crate::Result<Vec<PathBuf>> {
+    let value = env::var(var_name).map_err(|_| {
+        Error::invalid_vault(format!(
+            "{} must be set to directories TotalImage can access",
+            var_name
+        ))
+    })?;
+
+    let mut roots = Vec::new();
+    for raw in env::split_paths(&value) {
+        if raw.as_os_str().is_empty() {
+            continue;
+        }
+
+        let canonical = raw.canonicalize().map_err(|e| {
+            Error::invalid_vault(format!(
+                "Allowed root {} is invalid: {}",
+                raw.display(),
+                e
+            ))
+        })?;
+
+        if !canonical.is_dir() {
+            return Err(Error::invalid_vault(format!(
+                "Allowed root {} is not a directory",
+                canonical.display()
+            )));
+        }
+
+        roots.push(canonical);
+    }
+
+    if roots.is_empty() {
+        return Err(Error::invalid_vault(format!(
+            "{} must contain at least one directory",
+            var_name
+        )));
+    }
+
+    Ok(roots)
+}
 
 /// Validate that a size is within allocation limits
 ///
@@ -95,45 +150,87 @@ pub fn validate_sector_size(sector_size: u32) -> crate::Result<()> {
     Ok(())
 }
 
-/// Sanitize and validate a file path for safe access
+/// Sanitize and validate a file path for safe access against an allowed root list.
 ///
 /// # Security
-/// Prevents path traversal attacks in web API
+/// Prevents path traversal attacks in services that expose host files.
 ///
 /// # Returns
 /// Canonical absolute path if valid, error otherwise
-pub fn validate_file_path(path: &str) -> crate::Result<PathBuf> {
-    // Reject empty paths
-    if path.is_empty() {
+pub fn validate_file_path(path: &str, allowed_roots: &[PathBuf]) -> crate::Result<PathBuf> {
+    if path.trim().is_empty() {
         return Err(Error::not_found("Empty path".to_string()));
     }
 
-    // Reject paths with null bytes
     if path.contains('\0') {
         return Err(Error::invalid_vault(
             "Path contains null byte".to_string(),
         ));
     }
 
+    if allowed_roots.is_empty() {
+        return Err(Error::invalid_vault(
+            "No allowed directories configured for file validation".to_string(),
+        ));
+    }
+
     let path_obj = Path::new(path);
+    let candidates: Vec<PathBuf> = if path_obj.is_absolute() {
+        vec![path_obj.to_path_buf()]
+    } else {
+        allowed_roots.iter().map(|root| root.join(path_obj)).collect()
+    };
 
-    // Canonicalize to resolve .. and symlinks
-    let canonical = path_obj.canonicalize().map_err(|e| {
-        Error::not_found(format!("Path does not exist or is inaccessible: {}", e))
-    })?;
+    let mut saw_not_found = false;
+    let mut last_error: Option<Error> = None;
 
-    // Ensure it's a file (not a directory or special file)
-    if !canonical.is_file() {
-        return Err(Error::invalid_vault(format!(
-            "Path is not a regular file: {}",
-            canonical.display()
+    for candidate in candidates {
+        match candidate.canonicalize() {
+            Ok(canonical) => {
+                if !canonical.is_file() {
+                    last_error = Some(Error::invalid_vault(format!(
+                        "Path is not a regular file: {}",
+                        canonical.display()
+                    )));
+                    continue;
+                }
+
+                if allowed_roots.iter().any(|root| canonical.starts_with(root)) {
+                    return Ok(canonical);
+                }
+
+                last_error = Some(Error::invalid_vault(format!(
+                    "Path {} is outside allowed directories",
+                    canonical.display()
+                )));
+            }
+            Err(e) => {
+                if e.kind() == io::ErrorKind::NotFound {
+                    saw_not_found = true;
+                } else {
+                    last_error = Some(Error::invalid_vault(format!(
+                        "Failed to access {}: {}",
+                        candidate.display(),
+                        e
+                    )));
+                }
+            }
+        }
+    }
+
+    if saw_not_found {
+        return Err(Error::not_found(format!(
+            "Path does not exist or is inaccessible: {}",
+            path
         )));
     }
 
-    // Additional security: Could check against allowlist of directories
-    // For now, we accept any readable file the process can access
-
-    Ok(canonical)
+    Err(last_error.unwrap_or_else(|| {
+        Error::invalid_vault(format!(
+            "Unable to validate {} against allowed directories",
+            path
+        ))
+    }))
 }
 
 /// Validate partition index is within bounds

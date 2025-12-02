@@ -14,9 +14,14 @@ use axum::{
 };
 use cache::MetadataCache;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
-use std::sync::Arc;
-use totalimage_core::{validate_file_path, Result as TotalImageResult, ZoneTable};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use totalimage_core::{
+    allowed_roots_from_env,
+    allowed_roots_from_env_var,
+    validate_file_path,
+    Result as TotalImageResult,
+    ZoneTable,
+};
 use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
 
@@ -24,6 +29,18 @@ use totalimage_zones::{GptZoneTable, MbrZoneTable};
 #[derive(Clone)]
 struct AppState {
     cache: Arc<MetadataCache>,
+    allowed_roots: Arc<Vec<PathBuf>>,
+}
+
+fn load_allowed_roots() -> Vec<PathBuf> {
+    allowed_roots_from_env_var("TOTALIMAGE_WEB_ALLOWED_ROOT")
+        .or_else(|_| allowed_roots_from_env())
+        .unwrap_or_else(|err| {
+            panic!(
+                "TOTALIMAGE_WEB_ALLOWED_ROOT or TOTALIMAGE_ALLOWED_ROOT must be set: {}",
+                err
+            )
+        })
 }
 
 #[tokio::main]
@@ -66,7 +83,12 @@ async fn main() {
         }
     };
 
-    let state = AppState { cache };
+    let allowed_roots = Arc::new(load_allowed_roots());
+
+    let state = AppState {
+        cache,
+        allowed_roots: allowed_roots.clone(),
+    };
 
     // TODO: Production hardening (SEC-007)
     // - Add rate limiting: tower::limit::RateLimitLayer
@@ -157,7 +179,7 @@ async fn vault_info(
     tracing::info!("Cache MISS for vault_info: {}", params.path);
 
     // Parse vault
-    match get_vault_info(&params.path) {
+    match get_vault_info(&params.path, &state.allowed_roots) {
         Ok(info) => {
             // Store in cache
             if let Err(e) = state.cache.set_vault_info(&params.path, &info) {
@@ -189,7 +211,7 @@ async fn vault_zones(
     tracing::info!("Cache MISS for zones: {}", params.path);
 
     // Parse vault zones
-    match get_vault_zones(&params.path) {
+    match get_vault_zones(&params.path, &state.allowed_roots) {
         Ok(zones) => {
             // Store in cache
             if let Err(e) = state.cache.set_zones(&params.path, &zones) {
@@ -207,9 +229,12 @@ async fn vault_zones(
     }
 }
 
-fn get_vault_info(image_path: &str) -> TotalImageResult<VaultInfoResponse> {
+fn get_vault_info(
+    image_path: &str,
+    allowed_roots: &[PathBuf],
+) -> TotalImageResult<VaultInfoResponse> {
     // Validate path to prevent path traversal attacks
-    let path = validate_file_path(image_path)?;
+    let path = validate_file_path(image_path, allowed_roots)?;
     let mut vault = open_vault(&path, VaultConfig::default())?;
 
     let vault_type = vault.identify().to_string();
@@ -241,9 +266,12 @@ fn get_vault_info(image_path: &str) -> TotalImageResult<VaultInfoResponse> {
     })
 }
 
-fn get_vault_zones(image_path: &str) -> TotalImageResult<VaultZonesResponse> {
+fn get_vault_zones(
+    image_path: &str,
+    allowed_roots: &[PathBuf],
+) -> TotalImageResult<VaultZonesResponse> {
     // Validate path to prevent path traversal attacks
-    let path = validate_file_path(image_path)?;
+    let path = validate_file_path(image_path, allowed_roots)?;
     let mut vault = open_vault(&path, VaultConfig::default())?;
 
     let sector_size = 512;
