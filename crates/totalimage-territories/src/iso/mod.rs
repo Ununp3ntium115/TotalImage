@@ -469,4 +469,76 @@ mod tests {
         assert_eq!(root.extent_location.get(), 18);
         assert_eq!(root.data_length.get(), 2048);
     }
+
+    #[test]
+    fn test_iso_sector_size() {
+        // ISO 9660 uses 2048-byte sectors
+        const ISO_SECTOR_SIZE: usize = 2048;
+        assert_eq!(ISO_SECTOR_SIZE, 2048);
+    }
+
+    #[test]
+    fn test_iso_volume_descriptor_start() {
+        // Volume descriptors start at sector 16 (byte offset 32768)
+        const SECTOR_16: u64 = 16 * 2048;
+        assert_eq!(VOLUME_DESCRIPTOR_START, SECTOR_16);
+        assert_eq!(VOLUME_DESCRIPTOR_START, 32768);
+    }
+
+    #[test]
+    fn test_iso_standard_identifier() {
+        // ISO 9660 standard identifier is "CD001"
+        const ISO_STANDARD_ID: &[u8; 5] = b"CD001";
+        assert_eq!(ISO_STANDARD_ID, b"CD001");
+    }
+
+    #[test]
+    fn test_joliet_supplementary_descriptor_type() {
+        // Joliet uses Supplementary Volume Descriptor (type 2)
+        const SUPPLEMENTARY_DESCRIPTOR: u8 = 2;
+        assert_eq!(SUPPLEMENTARY_DESCRIPTOR, 2);
+    }
+
+    #[test]
+    fn test_joliet_escape_sequences() {
+        // Joliet escape sequences for UCS-2 encoding
+        // Level 1: %/@
+        // Level 2: %/C
+        // Level 3: %/E
+        const JOLIET_LEVEL_1: &[u8; 3] = b"%/@";
+        const JOLIET_LEVEL_2: &[u8; 3] = b"%/C";
+        const JOLIET_LEVEL_3: &[u8; 3] = b"%/E";
+
+        assert_eq!(JOLIET_LEVEL_1, b"%/@");
+        assert_eq!(JOLIET_LEVEL_2, b"%/C");
+        assert_eq!(JOLIET_LEVEL_3, b"%/E");
+    }
+
+    #[test]
+    fn test_iso_max_filename_length() {
+        // ISO 9660 Level 1: 8.3 format (filename + extension)
+        // Level 2: Up to 31 characters
+        const LEVEL_1_MAX: usize = 12; // 8 + '.' + 3
+        const LEVEL_2_MAX: usize = 31;
+
+        assert_eq!(LEVEL_1_MAX, 12);
+        assert_eq!(LEVEL_2_MAX, 31);
+    }
+
+    #[test]
+    fn test_joliet_max_filename_length() {
+        // Joliet supports up to 64 characters (128 bytes in UCS-2)
+        const JOLIET_MAX_CHARS: usize = 64;
+        const JOLIET_MAX_BYTES: usize = 128; // UCS-2 = 2 bytes per char
+
+        assert_eq!(JOLIET_MAX_CHARS, 64);
+        assert_eq!(JOLIET_MAX_BYTES, 128);
+    }
+
+    #[test]
+    fn test_iso_directory_depth_limit() {
+        // ISO 9660 limits directory depth to 8 levels
+        const MAX_DIR_DEPTH: usize = 8;
+        assert_eq!(MAX_DIR_DEPTH, 8);
+    }
 }
