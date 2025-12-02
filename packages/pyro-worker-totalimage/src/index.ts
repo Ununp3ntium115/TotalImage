@@ -114,5 +114,11 @@ export {
 // Re-export worker
 export { TotalImageWorker, createWorker } from './worker.js';
 
+// Re-export metrics
+export {
+  MetricsCollector,
+  type WorkerMetrics,
+} from './metrics.js';
+
 // Default export for convenience
 export { createMCPClient as default } from './client.js';

@@ -31,6 +31,7 @@ mod server;
 mod cache;
 mod auth;
 mod websocket;
+pub mod metrics;
 
 pub use protocol::{
     MCPRequest, MCPResponse, MCPError, MCPErrorCode,
@@ -45,6 +46,7 @@ pub use server::{MCPServer, ServerMode, StandaloneConfig, IntegratedConfig};
 pub use cache::ToolCache;
 pub use auth::{AuthConfig, AuthUser, AuthMethod, AuthError, Claims};
 pub use websocket::{WsState, WsMessage, ProgressUpdate, CompletedUpdate, FailedUpdate, ws_handler};
+pub use metrics::MetricsState;
 
 pub use totalimage_core::Result as TotalImageResult;
 pub use anyhow::Result;

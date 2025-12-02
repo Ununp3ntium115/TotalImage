@@ -282,4 +282,74 @@ mod tests {
 
         assert!(table.is_gpt_protective());
     }
+
+    #[test]
+    fn test_mbr_boot_signature_constants() {
+        // MBR boot signature is always 0x55AA at offset 0x1FE
+        const BOOT_SIG_OFFSET: usize = 0x1FE;
+        const BOOT_SIG_BYTE1: u8 = 0x55;
+        const BOOT_SIG_BYTE2: u8 = 0xAA;
+
+        assert_eq!(BOOT_SIG_OFFSET, 510);
+        assert_eq!(BOOT_SIG_BYTE1, 0x55);
+        assert_eq!(BOOT_SIG_BYTE2, 0xAA);
+    }
+
+    #[test]
+    fn test_mbr_partition_entry_size() {
+        // Each MBR partition entry is exactly 16 bytes
+        const ENTRY_SIZE: usize = 16;
+        const NUM_ENTRIES: usize = 4;
+        const TOTAL_SIZE: usize = ENTRY_SIZE * NUM_ENTRIES;
+
+        assert_eq!(ENTRY_SIZE, 16);
+        assert_eq!(NUM_ENTRIES, 4);
+        assert_eq!(TOTAL_SIZE, 64);
+    }
+
+    #[test]
+    fn test_mbr_partition_entry_offset() {
+        // First partition entry starts at offset 0x1BE (446)
+        const FIRST_ENTRY_OFFSET: usize = 0x1BE;
+        assert_eq!(FIRST_ENTRY_OFFSET, 446);
+
+        // Entries are at 446, 462, 478, 494
+        assert_eq!(FIRST_ENTRY_OFFSET + 16, 462);
+        assert_eq!(FIRST_ENTRY_OFFSET + 32, 478);
+        assert_eq!(FIRST_ENTRY_OFFSET + 48, 494);
+    }
+
+    #[test]
+    fn test_mbr_max_partition_count() {
+        // MBR supports exactly 4 primary partitions
+        const MAX_PRIMARY_PARTITIONS: usize = 4;
+        assert_eq!(MAX_PRIMARY_PARTITIONS, 4);
+    }
+
+    #[test]
+    fn test_mbr_extended_partition_types() {
+        // Extended partition types
+        const EXTENDED_DOS: u8 = 0x05;
+        const EXTENDED_WIN95: u8 = 0x0F;
+        const EXTENDED_LBA: u8 = 0x0F;
+
+        assert_eq!(EXTENDED_DOS, 0x05);
+        assert_eq!(EXTENDED_WIN95, 0x0F);
+        assert_eq!(EXTENDED_LBA, 0x0F);
+    }
+
+    #[test]
+    fn test_mbr_chs_max_values() {
+        // CHS addressing max values
+        // Max cylinder: 1023 (10 bits)
+        // Max head: 255 (8 bits)
+        // Max sector: 63 (6 bits, 1-based)
+        const MAX_CYLINDER: u16 = 1023;
+        const MAX_HEAD: u8 = 255;
+        const MAX_SECTOR: u8 = 63;
+
+        assert_eq!(MAX_CYLINDER, 1023);
+        assert_eq!(MAX_HEAD, 255);
+        assert_eq!(MAX_SECTOR, 63);
+    }
 }

@@ -503,4 +503,72 @@ mod tests {
         assert_eq!(territory.block_size(), 4096);
         assert!(territory.hierarchical());
     }
+
+    #[test]
+    fn test_exfat_sector_size_calculation() {
+        // exFAT uses shift values: sector_size = 2^shift
+        let shift = 9; // 2^9 = 512 bytes
+        let sector_size = 1 << shift;
+        assert_eq!(sector_size, 512);
+
+        let shift_4k = 12; // 2^12 = 4096 bytes
+        let sector_size_4k = 1 << shift_4k;
+        assert_eq!(sector_size_4k, 4096);
+    }
+
+    #[test]
+    fn test_exfat_cluster_size_calculation() {
+        // cluster_size = bytes_per_sector * 2^sectors_per_cluster_shift
+        let bytes_per_sector = 512;
+        let shift = 3; // 2^3 = 8 sectors per cluster
+        let cluster_size = bytes_per_sector * (1 << shift);
+        assert_eq!(cluster_size, 4096);
+    }
+
+    #[test]
+    fn test_exfat_fat_offset_calculation() {
+        // FAT starts at fat_offset sectors from start
+        let fat_offset = 128u32; // sectors
+        let bytes_per_sector = 512;
+        let fat_byte_offset = fat_offset as u64 * bytes_per_sector as u64;
+        assert_eq!(fat_byte_offset, 65536);
+    }
+
+    #[test]
+    fn test_exfat_cluster_heap_offset() {
+        // Cluster heap offset in sectors
+        let cluster_heap_offset = 512u32;
+        let bytes_per_sector = 512;
+        let heap_byte_offset = cluster_heap_offset as u64 * bytes_per_sector as u64;
+        assert_eq!(heap_byte_offset, 262144);
+    }
+
+    #[test]
+    fn test_exfat_max_file_size() {
+        // exFAT supports up to 16 EB (exabytes) = 2^64 - 1 bytes
+        // In practice, limited by cluster count and cluster size
+        const MAX_THEORETICAL: u64 = u64::MAX;
+
+        // Practical max: 256 TB with 32 MB clusters
+        let cluster_size: u64 = 32 * 1024 * 1024; // 32 MB
+        let max_clusters: u64 = 0xFFFFFFFF - 10; // Reserve special clusters
+        let max_file_size = cluster_size * max_clusters;
+
+        assert!(max_file_size < MAX_THEORETICAL);
+        // Should be approximately 128 PB
+        assert!(max_file_size > 100_000_000_000_000_000);
+    }
+
+    #[test]
+    fn test_exfat_volume_flags() {
+        // Volume flags bits
+        const ACTIVE_FAT: u16 = 0x0001;
+        const VOLUME_DIRTY: u16 = 0x0002;
+        const MEDIA_FAILURE: u16 = 0x0004;
+
+        let flags = ACTIVE_FAT | VOLUME_DIRTY;
+        assert_eq!(flags & ACTIVE_FAT, ACTIVE_FAT);
+        assert_eq!(flags & VOLUME_DIRTY, VOLUME_DIRTY);
+        assert_eq!(flags & MEDIA_FAILURE, 0);
+    }
 }

@@ -550,4 +550,85 @@ mod tests {
         assert!(attrs.contains(&NtfsFileAttribute::Hidden));
         assert!(attrs.contains(&NtfsFileAttribute::System));
     }
+
+    #[test]
+    fn test_ntfs_readonly_attribute() {
+        let attrs = NtfsFileAttribute::from_u32(0x0001);
+        assert!(attrs.contains(&NtfsFileAttribute::ReadOnly));
+        assert!(!attrs.contains(&NtfsFileAttribute::Directory));
+    }
+
+    #[test]
+    fn test_ntfs_compressed_attribute() {
+        let attrs = NtfsFileAttribute::from_u32(0x0800);
+        assert!(attrs.contains(&NtfsFileAttribute::Compressed));
+    }
+
+    #[test]
+    fn test_ntfs_encrypted_attribute() {
+        let attrs = NtfsFileAttribute::from_u32(0x4000);
+        assert!(attrs.contains(&NtfsFileAttribute::Encrypted));
+    }
+
+    #[test]
+    fn test_ntfs_sparse_file_attribute() {
+        let attrs = NtfsFileAttribute::from_u32(0x0200);
+        assert!(attrs.contains(&NtfsFileAttribute::SparseFile));
+    }
+
+    #[test]
+    fn test_ntfs_reparse_point_attribute() {
+        let attrs = NtfsFileAttribute::from_u32(0x0400);
+        assert!(attrs.contains(&NtfsFileAttribute::ReparsePoint));
+    }
+
+    #[test]
+    fn test_ntfs_temporary_attribute() {
+        let attrs = NtfsFileAttribute::from_u32(0x0100);
+        assert!(attrs.contains(&NtfsFileAttribute::Temporary));
+    }
+
+    #[test]
+    fn test_ntfs_offline_attribute() {
+        let attrs = NtfsFileAttribute::from_u32(0x1000);
+        assert!(attrs.contains(&NtfsFileAttribute::Offline));
+    }
+
+    #[test]
+    fn test_ntfs_not_content_indexed_attribute() {
+        let attrs = NtfsFileAttribute::from_u32(0x2000);
+        assert!(attrs.contains(&NtfsFileAttribute::NotContentIndexed));
+    }
+
+    #[test]
+    fn test_ntfs_multiple_attributes() {
+        // ReadOnly | Hidden | System | Archive
+        let attrs = NtfsFileAttribute::from_u32(0x0027);
+        assert!(attrs.contains(&NtfsFileAttribute::ReadOnly));
+        assert!(attrs.contains(&NtfsFileAttribute::Hidden));
+        assert!(attrs.contains(&NtfsFileAttribute::System));
+        assert!(attrs.contains(&NtfsFileAttribute::Archive));
+        assert!(!attrs.contains(&NtfsFileAttribute::Directory));
+    }
+
+    #[test]
+    fn test_ntfs_no_attributes() {
+        let attrs = NtfsFileAttribute::from_u32(0x0000);
+        assert!(!attrs.contains(&NtfsFileAttribute::ReadOnly));
+        assert!(!attrs.contains(&NtfsFileAttribute::Hidden));
+        assert!(!attrs.contains(&NtfsFileAttribute::Directory));
+    }
+
+    #[test]
+    fn test_ntfs_all_standard_attributes() {
+        // Test all standard file attributes
+        let all_attrs = 0x0001 | 0x0002 | 0x0004 | 0x0020 | 0x0010 | 0x0080;
+        let attrs = NtfsFileAttribute::from_u32(all_attrs);
+
+        assert!(attrs.contains(&NtfsFileAttribute::ReadOnly));
+        assert!(attrs.contains(&NtfsFileAttribute::Hidden));
+        assert!(attrs.contains(&NtfsFileAttribute::System));
+        assert!(attrs.contains(&NtfsFileAttribute::Archive));
+        assert!(attrs.contains(&NtfsFileAttribute::Directory));
+    }
 }

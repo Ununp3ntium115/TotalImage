@@ -322,4 +322,190 @@ mod tests {
         // Non-existent path
         assert!(validate_file_path("/nonexistent/file").is_err());
     }
+
+    #[test]
+    fn test_validate_fs_path_components_valid() {
+        // Valid simple path
+        let result = validate_fs_path_components("dir/file.txt");
+        assert!(result.is_ok());
+        let parts = result.unwrap();
+        assert_eq!(parts, vec!["dir", "file.txt"]);
+
+        // Valid nested path
+        let result = validate_fs_path_components("dir1/dir2/dir3/file.dat");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 4);
+
+        // Valid Windows-style path
+        let result = validate_fs_path_components("folder\\subfolder\\file.exe");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), vec!["folder", "subfolder", "file.exe"]);
+
+        // Valid mixed separators
+        let result = validate_fs_path_components("dir1/dir2\\file.txt");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), vec!["dir1", "dir2", "file.txt"]);
+    }
+
+    #[test]
+    fn test_validate_fs_path_components_parent_traversal() {
+        // Parent directory traversal
+        assert!(validate_fs_path_components("../etc/passwd").is_err());
+        assert!(validate_fs_path_components("dir/../file").is_err());
+        assert!(validate_fs_path_components("../../root").is_err());
+        assert!(validate_fs_path_components("dir\\..\\file").is_err());
+    }
+
+    #[test]
+    fn test_validate_fs_path_components_absolute_paths() {
+        // Unix absolute path
+        assert!(validate_fs_path_components("/etc/passwd").is_err());
+        assert!(validate_fs_path_components("/absolute/path").is_err());
+
+        // Windows absolute path
+        assert!(validate_fs_path_components("\\Windows\\System32").is_err());
+    }
+
+    #[test]
+    fn test_validate_fs_path_components_current_directory() {
+        // Current directory reference
+        assert!(validate_fs_path_components("./file").is_err());
+        assert!(validate_fs_path_components("dir/./file").is_err());
+        assert!(validate_fs_path_components(".").is_err());
+    }
+
+    #[test]
+    fn test_validate_fs_path_components_edge_cases() {
+        // Empty path
+        assert!(validate_fs_path_components("").is_err());
+
+        // Null byte
+        assert!(validate_fs_path_components("file\0name").is_err());
+
+        // Only separators
+        assert!(validate_fs_path_components("///").is_err());
+        assert!(validate_fs_path_components("\\\\\\").is_err());
+
+        // Trailing separators (should be handled)
+        let result = validate_fs_path_components("dir/file/");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), vec!["dir", "file"]);
+    }
+
+    #[test]
+    fn test_checked_multiply_u32_to_u64_valid() {
+        // Valid multiplication
+        assert_eq!(
+            checked_multiply_u32_to_u64(1000, 512, "test").unwrap(),
+            512_000
+        );
+
+        // Large but valid multiplication
+        assert_eq!(
+            checked_multiply_u32_to_u64(65536, 32768, "test").unwrap(),
+            2_147_483_648
+        );
+
+        // Maximum u32 values that don't overflow
+        assert_eq!(
+            checked_multiply_u32_to_u64(1, u32::MAX, "test").unwrap(),
+            u32::MAX as u64
+        );
+    }
+
+    #[test]
+    fn test_checked_multiply_u32_to_u64_no_overflow() {
+        // Note: u32 * u32 will never overflow u64 (max result is (2^32-1)^2 < 2^64-1)
+        // This test verifies the maximum possible u32 multiplication
+        let result = checked_multiply_u32_to_u64(u32::MAX, u32::MAX, "test");
+        assert!(result.is_ok());
+        // u32::MAX * u32::MAX = 0xFFFFFFFE00000001
+        assert_eq!(result.unwrap(), 18446744065119617025);
+
+        // Zero edge case
+        assert_eq!(checked_multiply_u32_to_u64(0, u32::MAX, "test").unwrap(), 0);
+        assert_eq!(checked_multiply_u32_to_u64(u32::MAX, 0, "test").unwrap(), 0);
+    }
+
+    #[test]
+    fn test_validate_partition_index_valid() {
+        // Valid indices
+        assert!(validate_partition_index(0, 10).is_ok());
+        assert!(validate_partition_index(5, 10).is_ok());
+        assert!(validate_partition_index(9, 10).is_ok());
+    }
+
+    #[test]
+    fn test_validate_partition_index_out_of_bounds() {
+        // Index equals max (out of bounds)
+        assert!(validate_partition_index(10, 10).is_err());
+
+        // Index exceeds max
+        assert!(validate_partition_index(15, 10).is_err());
+
+        // Edge case: empty partition table
+        assert!(validate_partition_index(0, 0).is_err());
+    }
+
+    #[test]
+    fn test_validate_allocation_size_edge_cases() {
+        // Zero allocation (valid)
+        assert!(validate_allocation_size(0, MAX_ALLOCATION_SIZE, "test").is_ok());
+
+        // Exactly at limit (valid)
+        assert!(validate_allocation_size(
+            MAX_ALLOCATION_SIZE as u64,
+            MAX_ALLOCATION_SIZE,
+            "test"
+        )
+        .is_ok());
+
+        // Just over limit (invalid)
+        assert!(validate_allocation_size(
+            (MAX_ALLOCATION_SIZE as u64) + 1,
+            MAX_ALLOCATION_SIZE,
+            "test"
+        )
+        .is_err());
+
+        // Very large allocation (invalid)
+        assert!(validate_allocation_size(u64::MAX, MAX_ALLOCATION_SIZE, "test").is_err());
+    }
+
+    #[test]
+    fn test_checked_multiply_u64_edge_cases() {
+        // Zero multiplication
+        assert_eq!(checked_multiply_u64(0, 1000, "test").unwrap(), 0);
+        assert_eq!(checked_multiply_u64(1000, 0, "test").unwrap(), 0);
+
+        // Multiplication by 1
+        assert_eq!(checked_multiply_u64(12345, 1, "test").unwrap(), 12345);
+
+        // Large but valid multiplication
+        assert_eq!(
+            checked_multiply_u64(1_000_000, 1_000_000, "test").unwrap(),
+            1_000_000_000_000
+        );
+
+        // Maximum value that doesn't overflow
+        assert_eq!(checked_multiply_u64(u64::MAX, 1, "test").unwrap(), u64::MAX);
+    }
+
+    #[test]
+    fn test_validate_sector_size_all_valid_sizes() {
+        // Test all valid power-of-2 sector sizes
+        assert!(validate_sector_size(1).is_ok());
+        assert!(validate_sector_size(2).is_ok());
+        assert!(validate_sector_size(4).is_ok());
+        assert!(validate_sector_size(8).is_ok());
+        assert!(validate_sector_size(16).is_ok());
+        assert!(validate_sector_size(32).is_ok());
+        assert!(validate_sector_size(64).is_ok());
+        assert!(validate_sector_size(128).is_ok());
+        assert!(validate_sector_size(256).is_ok());
+        assert!(validate_sector_size(512).is_ok());
+        assert!(validate_sector_size(1024).is_ok());
+        assert!(validate_sector_size(2048).is_ok());
+        assert!(validate_sector_size(4096).is_ok());
+    }
 }

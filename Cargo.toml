@@ -12,6 +12,8 @@ members = [
     "crates/fire-marshal",
 ]
 
+exclude = ["fuzz"]
+
 resolver = "2"
 
 [workspace.package]

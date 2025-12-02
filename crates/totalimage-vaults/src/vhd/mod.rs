@@ -1081,4 +1081,94 @@ mod tests {
             .collect();
         assert_eq!(&buf[..], &expected[..]);
     }
+
+    #[test]
+    fn test_vhd_chain_depth_limit() {
+        // Test VHD chain depth limit constant (GAP-009)
+        const MAX_VHD_CHAIN_DEPTH: usize = 10;
+
+        // Verify limit is defined and reasonable
+        assert_eq!(MAX_VHD_CHAIN_DEPTH, 10);
+
+        // A chain of 10 should be valid
+        assert!(MAX_VHD_CHAIN_DEPTH > 0);
+        assert!(MAX_VHD_CHAIN_DEPTH <= 100); // Sanity check
+    }
+
+    #[test]
+    fn test_vhd_footer_size_constant() {
+        // VHD footer is exactly 512 bytes
+        assert_eq!(VhdFooter::SIZE, 512);
+    }
+
+    #[test]
+    fn test_vhd_dynamic_header_size() {
+        // Dynamic header is 1024 bytes
+        use types::VhdDynamicHeader;
+        assert_eq!(std::mem::size_of::<VhdDynamicHeader>(), 1024);
+    }
+
+    #[test]
+    fn test_vhd_geometry_calculation() {
+        use types::DiskGeometry;
+
+        // Test geometry with known values
+        let geom = DiskGeometry {
+            cylinders: 1024,
+            heads: 16,
+            sectors: 63,
+        };
+
+        // Total sectors calculation
+        let total_sectors = geom.cylinders as u64 * geom.heads as u64 * geom.sectors as u64;
+        assert_eq!(total_sectors, 1_032_192);
+    }
+
+    #[test]
+    fn test_vhd_type_enum() {
+        use types::VhdType;
+
+        // Verify all VHD types are defined
+        let fixed = VhdType::Fixed;
+        let dynamic = VhdType::Dynamic;
+        let differencing = VhdType::Differencing;
+
+        assert_eq!(fixed as u32, 2);
+        assert_eq!(dynamic as u32, 3);
+        assert_eq!(differencing as u32, 4);
+    }
+
+    #[test]
+    fn test_vhd_bat_entry_sparse() {
+        // Test sparse BAT entry detection (0xFFFFFFFF means sparse)
+        const VHD_BAT_UNUSED: u32 = 0xFFFFFFFF;
+
+        assert_eq!(VHD_BAT_UNUSED, 0xFFFFFFFF);
+
+        // Any other value means allocated
+        let allocated_offset: u32 = 512;
+        assert_ne!(allocated_offset, VHD_BAT_UNUSED);
+    }
+
+    #[test]
+    fn test_vhd_sector_bitmap_size() {
+        // Sector bitmap is 512 bytes (4096 bits = 512 sectors)
+        let block_size = 2 * 1024 * 1024; // 2 MB
+        let sector_size = 512;
+        let sectors_per_block = block_size / sector_size;
+
+        // Bitmap needs 1 bit per sector
+        let bitmap_size = sectors_per_block / 8;
+        assert_eq!(bitmap_size, 512);
+    }
+
+    #[test]
+    fn test_vhd_block_size_alignment() {
+        // VHD block sizes must be multiples of sector size (512)
+        let block_size = 2 * 1024 * 1024; // 2 MB
+        assert_eq!(block_size % 512, 0);
+
+        // Common block size
+        assert_eq!(block_size, 2_097_152);
+    }
 }

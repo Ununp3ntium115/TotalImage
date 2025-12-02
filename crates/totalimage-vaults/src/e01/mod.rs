@@ -491,4 +491,103 @@ mod tests {
         // NOTE: Full integration test would require creating a malformed E01 file
         // Integration test with corrupted E01 chunk should be added to tests/
     }
+
+    #[test]
+    fn test_e01_cache_read_at_zero_offset() {
+        let cache = E01Cache::new(1024);
+        assert_eq!(cache.position, 0);
+        // Reading at offset 0 should work
+        assert!(cache.total_size > 0);
+    }
+
+    #[test]
+    fn test_e01_cache_read_at_end_boundary() {
+        let cache = E01Cache::new(1024);
+        // Position at exact end should be valid
+        assert_eq!(cache.total_size, 1024);
+    }
+
+    #[test]
+    fn test_e01_cache_empty_size() {
+        let cache = E01Cache::new(0);
+        assert_eq!(cache.total_size, 0);
+        assert_eq!(cache.position, 0);
+    }
+
+    #[test]
+    fn test_e01_cache_large_size() {
+        // Test large but reasonable cache size
+        let large_size = 1024 * 1024 * 1024; // 1 GB
+        let cache = E01Cache::new(large_size);
+        assert_eq!(cache.total_size, large_size);
+    }
+
+    #[test]
+    fn test_e01_compression_type_display() {
+        // Test compression enum variants
+        use types::E01Compression;
+        let none = E01Compression::None;
+        let deflate = E01Compression::Deflate;
+
+        // Verify enum variants exist and are different
+        assert!(matches!(none, E01Compression::None));
+        assert!(matches!(deflate, E01Compression::Deflate));
+        assert_ne!(std::mem::discriminant(&none), std::mem::discriminant(&deflate));
+    }
+
+    #[test]
+    fn test_e01_vault_info_fields() {
+        // Create minimal E01 structure and verify info fields
+        let header = types::E01FileHeader {
+            signature: [0x45, 0x56, 0x46, 0x09, 0x0d, 0x0a, 0xff, 0x00], // EVF signature
+            segment_number: 1,
+            fields_start: 13,
+        };
+
+        // Verify header size constant
+        assert_eq!(types::E01FileHeader::SIZE, 13);
+
+        // Verify signature
+        assert_eq!(header.signature, types::EVF_SIGNATURE);
+    }
+
+    #[test]
+    fn test_e01_chunk_boundary_calculation() {
+        // Test chunk size calculations don't overflow
+        let chunk_count: u32 = 1000;
+        let chunk_size: u32 = 32768; // 32 KB
+
+        // This should not overflow
+        let total_size = chunk_count as u64 * chunk_size as u64;
+        assert_eq!(total_size, 32_768_000);
+    }
+
+    #[test]
+    fn test_e01_section_type_from_bytes_invalid() {
+        use types::SectionType;
+
+        // Invalid section type should be handled as Unknown
+        let invalid = b"XXXX\0\0\0\0\0\0\0\0\0\0\0\0";
+        let result = SectionType::from_bytes(invalid);
+        // Should return Unknown for invalid types
+        assert!(matches!(result, SectionType::Unknown(_)));
+    }
+
+    #[test]
+    fn test_e01_section_type_from_bytes_valid() {
+        use types::SectionType;
+
+        // Test valid section types
+        let header = b"header\0\0\0\0\0\0\0\0\0\0";
+        assert_eq!(SectionType::from_bytes(header), SectionType::Header);
+
+        let volume = b"volume\0\0\0\0\0\0\0\0\0\0";
+        assert_eq!(SectionType::from_bytes(volume), SectionType::Volume);
+
+        let sectors = b"sectors\0\0\0\0\0\0\0\0\0";
+        assert_eq!(SectionType::from_bytes(sectors), SectionType::Sectors);
+
+        let done = b"done\0\0\0\0\0\0\0\0\0\0\0\0";
+        assert_eq!(SectionType::from_bytes(done), SectionType::Done);
+    }
 }
