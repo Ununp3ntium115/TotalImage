@@ -55,5 +55,9 @@ reqwest = { workspace = true, features = ["json"] }
 jsonwebtoken.workspace = true
 chrono.workspace = true
 
+# Metrics and observability
+prometheus = "0.13"
+lazy_static = "1.4"
+
 [dev-dependencies]
 tempfile.workspace = true

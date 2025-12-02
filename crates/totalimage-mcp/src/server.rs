@@ -6,6 +6,7 @@
 
 use crate::auth::{auth_middleware, AuthConfig};
 use crate::cache::ToolCache;
+use crate::metrics::{self, MetricsState};
 use crate::protocol::*;
 use crate::tools::*;
 use crate::websocket::{ws_handler, WsState};
@@ -225,9 +226,12 @@ impl MCPServer {
         // Create WebSocket state for progress broadcasting
         let ws_state = Arc::new(WsState::new());
 
-        // Build base router with health and optional WebSocket
+        // Build base router with health, metrics, and optional WebSocket
+        let metrics_state = Arc::new(MetricsState::new());
         let mut base_router = Router::new()
-            .route("/health", get(handle_health));
+            .route("/health", get(handle_health))
+            .route("/metrics", get(handle_metrics))
+            .with_state(metrics_state);
 
         if config.websocket_enabled {
             tracing::info!("WebSocket endpoint enabled at /ws");
@@ -345,17 +349,30 @@ impl MCPServer {
             }
         };
 
-        // Execute tool
-        match tool.execute(params.arguments).await {
-            Ok(result) => MCPResponse::success(id, serde_json::to_value(result).unwrap()),
+        let tool_name = tool.name();
+        let start_time = std::time::Instant::now();
+
+        // Execute tool with metrics
+        let response = match tool.execute(params.arguments).await {
+            Ok(result) => {
+                metrics::record_tool_call(tool_name, true);
+                MCPResponse::success(id, serde_json::to_value(result).unwrap())
+            }
             Err(e) => {
+                metrics::record_tool_call(tool_name, false);
                 tracing::error!("Tool execution error: {}", e);
                 MCPResponse::error(
                     id,
                     MCPError::internal_error(format!("Tool execution failed: {}", e)),
                 )
             }
-        }
+        };
+
+        // Record duration
+        let duration = start_time.elapsed().as_secs_f64();
+        metrics::record_tool_duration(tool_name, duration);
+
+        response
     }
 }
 
@@ -382,4 +399,18 @@ async fn handle_health() -> impl IntoResponse {
         "version": env!("CARGO_PKG_VERSION"),
         "timestamp": chrono::Utc::now().to_rfc3339()
     }))
+}
+
+// Prometheus metrics handler (no auth required)
+async fn handle_metrics(State(metrics_state): State<Arc<MetricsState>>) -> impl IntoResponse {
+    match metrics_state.encode() {
+        Ok(metrics) => (StatusCode::OK, metrics),
+        Err(e) => {
+            tracing::error!("Failed to encode metrics: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to encode metrics: {}", e),
+            )
+        }
+    }
 }

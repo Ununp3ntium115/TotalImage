@@ -8,6 +8,7 @@
 import { Worker, Job, Queue, QueueEvents } from 'bullmq';
 import type { Redis } from 'ioredis';
 import { TotalImageMCPClient } from './client.js';
+import { MetricsCollector } from './metrics.js';
 import type {
   WorkerConfig,
   JobData,
@@ -44,10 +45,12 @@ export class TotalImageWorker {
   private mcpClient: TotalImageMCPClient;
   private config: WorkerConfig;
   private isShuttingDown = false;
+  private metrics: MetricsCollector;
 
   constructor(config: WorkerConfig) {
     this.config = config;
     this.mcpClient = new TotalImageMCPClient(config.mcp);
+    this.metrics = new MetricsCollector();
   }
 
   /**
@@ -151,38 +154,59 @@ export class TotalImageWorker {
    */
   private async processJob(job: Job<JobData>): Promise<unknown> {
     const { data } = job;
+    const startTime = Date.now();
 
     this.log('info', `Processing job ${job.id}: ${data.job_type}`);
 
     try {
+      let result: unknown;
+
       switch (data.job_type) {
         case 'analyze_disk_image':
-          return await this.handleAnalyzeJob(job as Job<AnalyzeJob>);
+          result = await this.handleAnalyzeJob(job as Job<AnalyzeJob>);
+          break;
 
         case 'list_partitions':
-          return await this.handleListPartitionsJob(job as Job<ListPartitionsJob>);
+          result = await this.handleListPartitionsJob(job as Job<ListPartitionsJob>);
+          break;
 
         case 'list_files':
-          return await this.handleListFilesJob(job as Job<ListFilesJob>);
+          result = await this.handleListFilesJob(job as Job<ListFilesJob>);
+          break;
 
         case 'extract_file':
-          return await this.handleExtractFileJob(job as Job<ExtractFileJob>);
+          result = await this.handleExtractFileJob(job as Job<ExtractFileJob>);
+          break;
 
         case 'validate_integrity':
-          return await this.handleValidateIntegrityJob(job as Job<ValidateIntegrityJob>);
+          result = await this.handleValidateIntegrityJob(job as Job<ValidateIntegrityJob>);
+          break;
 
         case 'batch_analyze':
-          return await this.handleBatchAnalyzeJob(job as Job<BatchAnalyzeJob>);
+          result = await this.handleBatchAnalyzeJob(job as Job<BatchAnalyzeJob>);
+          break;
 
         case 'batch_extract':
-          return await this.handleBatchExtractJob(job as Job<BatchExtractJob>);
+          result = await this.handleBatchExtractJob(job as Job<BatchExtractJob>);
+          break;
 
         default:
           throw new Error(`Unknown job type: ${(data as JobData).job_type}`);
       }
+
+      // Record successful job completion
+      const duration = Date.now() - startTime;
+      this.metrics.recordJobCompletion(data.job_type, true, duration);
+
+      return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.log('error', `Job ${job.id} failed: ${message}`);
+
+      // Record failed job
+      const duration = Date.now() - startTime;
+      this.metrics.recordJobCompletion(data.job_type, false, duration);
+
       throw error;
     }
   }
@@ -341,12 +365,38 @@ export class TotalImageWorker {
     }
 
     const counts = await this.queue.getJobCounts();
-    return {
+    const stats = {
       waiting: counts.waiting ?? 0,
       active: counts.active ?? 0,
       completed: counts.completed ?? 0,
       failed: counts.failed ?? 0,
     };
+
+    // Update metrics with current queue stats
+    this.metrics.updateQueueStats(stats);
+
+    return stats;
+  }
+
+  /**
+   * Get worker metrics
+   */
+  getMetrics() {
+    return this.metrics.getMetrics();
+  }
+
+  /**
+   * Export metrics in Prometheus format
+   */
+  exportMetricsPrometheus(): string {
+    return this.metrics.exportPrometheus();
+  }
+
+  /**
+   * Reset metrics
+   */
+  resetMetrics(): void {
+    this.metrics.reset();
   }
 }
 
