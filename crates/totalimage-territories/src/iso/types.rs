@@ -298,6 +298,7 @@ pub struct DirectoryRecord {
     pub volume_sequence_number: BothEndian<u16>,
     pub file_identifier_length: u8,
     pub file_identifier: Vec<u8>,          // File name (variable length)
+    pub rock_ridge: Option<crate::iso::rockridge::RockRidgeExtensions>, // Rock Ridge extensions
 }
 
 impl DirectoryRecord {
@@ -349,6 +350,20 @@ impl DirectoryRecord {
 
         let file_identifier = bytes[id_start..id_end].to_vec();
 
+        // Parse Rock Ridge extensions from System Use area
+        // System Use area starts after file identifier + padding to even offset
+        let mut system_use_start = id_end;
+        if system_use_start % 2 != 0 {
+            system_use_start += 1; // Pad to even byte
+        }
+
+        let rock_ridge = if system_use_start < length as usize {
+            let system_use_data = &bytes[system_use_start..length as usize];
+            crate::iso::rockridge::parse_rock_ridge(system_use_data)
+        } else {
+            None
+        };
+
         Some(Self {
             length,
             extended_attr_length,
@@ -361,6 +376,7 @@ impl DirectoryRecord {
             volume_sequence_number,
             file_identifier_length,
             file_identifier,
+            rock_ridge,
         })
     }
 
@@ -376,6 +392,14 @@ impl DirectoryRecord {
 
     /// Get the file name as a string
     pub fn file_name(&self) -> String {
+        // Check for Rock Ridge alternate name first (long filename support)
+        if let Some(ref rr) = self.rock_ridge {
+            if let Some(ref alt_name) = rr.alternate_name {
+                return alt_name.clone();
+            }
+        }
+
+        // Fall back to ISO-9660 filename
         if self.file_identifier.is_empty() {
             return String::from(".");
         }
