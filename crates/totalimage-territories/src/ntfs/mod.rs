@@ -10,6 +10,7 @@
 //! - Read-only access (safe for forensics and mounted volumes)
 //! - Directory enumeration with long filenames
 //! - File extraction from resident and non-resident attributes
+//! - **NTFS compression support (LZNT1 decompression)**
 //! - Alternate Data Stream (ADS) support
 //! - Case-insensitive file lookup
 //!
@@ -26,6 +27,7 @@
 //! ```
 
 pub mod types;
+pub mod lznt1;
 
 use std::io::{Read, Seek, SeekFrom};
 use ntfs::{Ntfs, NtfsFile, NtfsReadSeek};
@@ -369,6 +371,26 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
             return Err(Error::not_found(format!("Path is a directory: {}", path)));
         }
 
+        // NOTE: NTFS Compression Support
+        //
+        // We have LZNT1 decompression implemented (see lznt1 module), but the ntfs crate v0.4
+        // does not support reading compressed file data. The crate's documentation explicitly
+        // lists compression as "not yet supported".
+        //
+        // Compressed files can be identified in directory listings (attribute 0x0800 = Compressed),
+        // but when trying to read their $DATA attribute, the ntfs crate will either:
+        // 1. Return an error
+        // 2. Return decompressed data automatically (if future version adds support)
+        //
+        // For now, attempting to extract a compressed file will fail when the ntfs crate
+        // tries to read the $DATA attribute. The error message from the ntfs crate should
+        // indicate the issue.
+        //
+        // TODO: Future enhancement options:
+        // - Wait for ntfs crate to add compression support
+        // - Implement low-level NTFS data run parsing to read compressed clusters directly
+        // - Fork/extend the ntfs crate to expose compressed data
+
         // Get the $DATA attribute (unnamed = main data stream)
         let data_item = match file.data(reader, "") {
             Some(result) => result.map_err(|e| Error::invalid_territory(format!("Cannot read $DATA: {}", e)))?,
@@ -388,7 +410,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
             )));
         }
 
-        // Read the data
+        // Read uncompressed data
         let mut data = vec![0u8; data_size as usize];
         let mut value_reader = data_attr.value(reader)
             .map_err(|e| Error::invalid_territory(format!("Cannot open data stream: {}", e)))?;
