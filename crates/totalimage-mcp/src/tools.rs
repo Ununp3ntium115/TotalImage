@@ -1235,7 +1235,8 @@ mod tests {
     #[test]
     fn test_list_files_tool_schema() {
         let cache = create_test_cache();
-        let tool = ListFilesTool { cache };
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
+        let tool = ListFilesTool { cache, allowed_roots };
 
         let schema = tool.input_schema();
         assert!(schema["properties"]["zone_index"].is_object());
@@ -1243,7 +1244,8 @@ mod tests {
 
     #[test]
     fn test_extract_file_tool_schema() {
-        let tool = ExtractFileTool {};
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
+        let tool = ExtractFileTool { allowed_roots };
 
         let schema = tool.input_schema();
         let required = schema["required"].as_array().unwrap();
@@ -1254,7 +1256,8 @@ mod tests {
 
     #[test]
     fn test_validate_integrity_tool_schema() {
-        let tool = ValidateIntegrityTool {};
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
+        let tool = ValidateIntegrityTool { allowed_roots };
 
         let schema = tool.input_schema();
         assert!(schema["properties"]["check_checksums"].is_object());
@@ -1273,10 +1276,10 @@ mod tests {
         let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache: cache.clone(), allowed_roots: allowed_roots.clone() });
         assert_eq!(analyze.name(), "analyze_disk_image");
 
-        let list_partitions = ToolEnum::ListPartitions(ListPartitionsTool { cache: cache.clone() });
+        let list_partitions = ToolEnum::ListPartitions(ListPartitionsTool { cache: cache.clone(), allowed_roots: allowed_roots.clone() });
         assert_eq!(list_partitions.name(), "list_partitions");
 
-        let list_files = ToolEnum::ListFiles(ListFilesTool { cache });
+        let list_files = ToolEnum::ListFiles(ListFilesTool { cache, allowed_roots: allowed_roots.clone() });
         assert_eq!(list_files.name(), "list_files");
 
         let extract = ToolEnum::ExtractFile(ExtractFileTool { allowed_roots: allowed_roots.clone() });
