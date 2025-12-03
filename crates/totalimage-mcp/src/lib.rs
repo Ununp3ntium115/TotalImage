@@ -44,7 +44,7 @@ pub use tools::{
 };
 pub use server::{MCPServer, ServerMode, StandaloneConfig, IntegratedConfig};
 pub use cache::ToolCache;
-pub use auth::{AuthConfig, AuthUser, AuthMethod, AuthError, Claims};
+pub use auth::{AuthConfig, AuthUser, AuthMethod, AuthError, Claims, auth_middleware};
 pub use websocket::{WsState, WsMessage, ProgressUpdate, CompletedUpdate, FailedUpdate, ws_handler};
 pub use metrics::MetricsState;
 

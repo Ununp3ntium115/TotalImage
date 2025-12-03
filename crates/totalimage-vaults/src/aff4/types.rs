@@ -114,6 +114,7 @@ impl Default for Aff4ImageStream {
 
 /// AFF4 volume metadata
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct Aff4Volume {
     /// Volume URN
     pub urn: String,
@@ -127,17 +128,6 @@ pub struct Aff4Volume {
     pub streams: Vec<Aff4ImageStream>,
 }
 
-impl Default for Aff4Volume {
-    fn default() -> Self {
-        Self {
-            urn: String::new(),
-            creation_time: None,
-            tool: None,
-            tool_version: None,
-            streams: Vec::new(),
-        }
-    }
-}
 
 /// AFF4 container information
 #[derive(Debug, Clone)]
@@ -278,9 +268,9 @@ impl TurtleParser {
         }
 
         // Handle quoted strings
-        if uri.starts_with('"') {
-            let end = uri[1..].find('"').map(|i| i + 1).unwrap_or(uri.len());
-            return uri[1..end].to_string();
+        if let Some(stripped) = uri.strip_prefix('"') {
+            let end = stripped.find('"').unwrap_or(stripped.len());
+            return stripped[..end].to_string();
         }
 
         // Handle prefixed URIs (prefix:localname)

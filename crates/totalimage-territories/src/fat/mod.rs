@@ -108,10 +108,8 @@ impl FatTerritory {
             u16::from_le_bytes([self.fat_table[offset], self.fat_table[offset + 1]]) >> 4
         };
 
-        // Check for end of chain markers
-        if value >= 0xFF8 {
-            None
-        } else if value == 0 || value == 1 {
+        // Check for end of chain markers or invalid clusters
+        if value >= 0xFF8 || value == 0 || value == 1 {
             None
         } else {
             Some(value as u32)
@@ -127,10 +125,8 @@ impl FatTerritory {
 
         let value = u16::from_le_bytes([self.fat_table[offset], self.fat_table[offset + 1]]);
 
-        // Check for end of chain markers
-        if value >= 0xFFF8 {
-            None
-        } else if value == 0 || value == 1 {
+        // Check for end of chain markers or invalid clusters
+        if value >= 0xFFF8 || value == 0 || value == 1 {
             None
         } else {
             Some(value as u32)
@@ -151,10 +147,8 @@ impl FatTerritory {
             self.fat_table[offset + 3],
         ]) & 0x0FFFFFFF; // Mask off top 4 bits
 
-        // Check for end of chain markers
-        if value >= 0x0FFFFFF8 {
-            None
-        } else if value == 0 || value == 1 {
+        // Check for end of chain markers or invalid clusters
+        if value >= 0x0FFFFFF8 || value == 0 || value == 1 {
             None
         } else {
             Some(value)
@@ -194,7 +188,7 @@ impl FatTerritory {
     /// Uses checked arithmetic to prevent overflow
     pub fn cluster_to_offset(&self, cluster: u32) -> Result<u64> {
         // Cluster 2 is the first data cluster
-        let cluster_offset = if cluster >= 2 { cluster - 2 } else { 0 };
+        let cluster_offset = cluster.saturating_sub(2);
 
         let data_offset = self.bpb.data_offset()? as u64;
         let bytes_per_cluster = self.bpb.bytes_per_cluster()? as u64;

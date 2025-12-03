@@ -45,6 +45,8 @@ bytes = "1.5"
 memmap2 = "0.9"
 flate2 = "1.0"
 zip = "2.1"
+snap = "1.1"
+lz4_flex = "0.11"
 
 # CRYPTO
 md5 = "0.7"
@@ -59,11 +61,16 @@ jsonwebtoken = "9.3"
 # ENCODING
 encoding_rs = "0.8"
 
+# FILESYSTEMS
+ntfs = "0.4"
+
 # WEB
 axum = { version = "0.7", features = ["multipart", "ws"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["fs", "cors", "timeout", "limit"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+tower = { version = "0.4", features = ["limit"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "timeout", "limit", "trace"] }
 reqwest = { version = "0.11", features = ["json"] }
+rustls-pemfile = "2.0"
 
 # DATABASE
 redb = "2.1"

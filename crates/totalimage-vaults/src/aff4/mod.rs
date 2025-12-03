@@ -33,9 +33,8 @@ use lru::LruCache;
 use std::num::NonZeroUsize;
 use totalimage_core::{Error, ReadSeek, Result, Vault};
 
-// Compression libraries for AFF4 (GAP-011)
-use snap::raw::Decoder as SnappyDecoder;
-use lz4::block::decompress;
+// Compression libraries for AFF4
+use lz4_flex::decompress_size_prepended;
 
 pub use types::*;
 
@@ -306,7 +305,7 @@ impl Aff4Vault {
 
         // If no index found, calculate from stream size
         if index_entries.is_empty() && stream.size > 0 {
-            let chunk_count = (stream.size + stream.chunk_size as u64 - 1) / stream.chunk_size as u64;
+            let chunk_count = stream.size.div_ceil(stream.chunk_size as u64);
             for i in 0..chunk_count {
                 index_entries.push(Aff4BevyIndexEntry {
                     offset: i * stream.chunk_size as u64,
@@ -380,7 +379,7 @@ impl Aff4Vault {
         let chunk_offset = entry.offset as usize;
         let chunk_len = entry.length as usize;
 
-        // Validate bounds
+        // Validate bounds - return error for invalid offsets instead of silent corruption
         if chunk_offset >= segment.len() {
             return Err(Error::invalid_vault(format!(
                 "AFF4 chunk {} offset {} exceeds segment size {}",
@@ -411,9 +410,8 @@ impl Aff4Vault {
                 data
             }
             Aff4Compression::Snappy => {
-                // Decompress using Snappy (GAP-011)
-                let mut decoder = SnappyDecoder::new();
-                decoder.decompress_vec(compressed).map_err(|e| {
+                // Snappy decompression using the snap crate
+                snap::raw::Decoder::new().decompress_vec(compressed).map_err(|e| {
                     Error::invalid_vault(format!(
                         "AFF4 chunk {} snappy decompression failed: {}",
                         chunk_index, e
@@ -421,36 +419,14 @@ impl Aff4Vault {
                 })?
             }
             Aff4Compression::Lz4 => {
-                // Decompress using LZ4 (GAP-011)
-                // LZ4 compressed data has a 4-byte prefix with uncompressed size
-                if compressed.len() < 4 {
-                    return Err(Error::invalid_vault(format!(
-                        "AFF4 chunk {} LZ4 data too small (need at least 4 bytes)",
-                        chunk_index
-                    )));
-                }
-                
-                let uncompressed_size = i32::from_le_bytes([
-                    compressed[0],
-                    compressed[1],
-                    compressed[2],
-                    compressed[3],
-                ]);
-                
-                if uncompressed_size < 0 || uncompressed_size as usize > chunk_size * 2 {
-                    return Err(Error::invalid_vault(format!(
-                        "AFF4 chunk {} LZ4 invalid uncompressed size: {}",
-                        chunk_index, uncompressed_size
-                    )));
-                }
-                
-                decompress(&compressed[4..], Some(uncompressed_size))
-                    .map_err(|e| {
-                        Error::invalid_vault(format!(
-                            "AFF4 chunk {} lz4 decompression failed: {}",
-                            chunk_index, e
-                        ))
-                    })?
+                // LZ4 decompression using lz4_flex crate
+                // AFF4 uses LZ4 with size prepended (block format)
+                decompress_size_prepended(compressed).map_err(|e| {
+                    Error::invalid_vault(format!(
+                        "AFF4 chunk {} lz4 decompression failed: {}",
+                        chunk_index, e
+                    ))
+                })?
             }
             Aff4Compression::Unknown(code) => {
                 return Err(Error::invalid_vault(format!(
@@ -522,7 +498,7 @@ impl Read for Aff4Vault {
 
             // Read and decompress chunk
             let chunk_data = self.read_chunk(chunk_index)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
 
             // Calculate how much to copy
             let available = chunk_data.len().saturating_sub(chunk_offset);
@@ -577,13 +553,26 @@ impl Vault for Aff4Vault {
     }
 }
 
-// Required for ReadSeek trait
+// SAFETY: Aff4Vault is safe to Send and Sync because:
+// - `archive` (ZipArchive<File>): File handles are Send+Sync on all supported platforms
+// - `volume`, `stream`, `bevy_index`: Plain data structures with no interior mutability
+// - `chunk_cache` (HashMap): Owned data, requires external synchronization for concurrent access
+// - `position` (u64): Plain numeric type
+// - `identifier` (String): Owned string
+//
+// Concurrent access requires external synchronization (e.g., Mutex) because:
+// - position tracking requires exclusive access for sequential reads
+// - chunk_cache modifications need synchronization
 unsafe impl Send for Aff4Vault {}
 unsafe impl Sync for Aff4Vault {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ============================================================
+    // Basic Tests
+    // ============================================================
 
     #[test]
     fn test_aff4_volume_default() {
@@ -629,24 +618,9 @@ mod tests {
         assert!(container.statements.is_empty());
     }
 
-    // P0 FIX TESTS: Ensure decompression failures return errors, not silent corruption
-
-    #[test]
-    fn test_aff4_deflate_corruption_fails_explicitly() {
-        // GAP-001: Corrupted deflate data must return error, not zeros
-        // This test verifies that decompression failures are explicit errors
-        // NOTE: Full integration test would require creating a malformed AFF4 file
-        // For now, we verify the error path exists in the code
-        // Integration test with real corrupted AFF4 should be added to tests/
-    }
-
-    #[test]
-    fn test_aff4_chunk_offset_validation() {
-        // GAP-003: Chunk offset must be validated with proper bounds checking
-        // This test verifies that out-of-bounds chunk reads fail explicitly
-        // NOTE: Full integration test would require creating an AFF4 with invalid bevy index
-        // Integration test with malformed bevy should be added to tests/
-    }
+    // ============================================================
+    // LRU Cache and Error Handling Tests
+    // ============================================================
 
     #[test]
     fn test_aff4_lru_cache_creation() {
@@ -679,46 +653,35 @@ mod tests {
     }
 
     #[test]
-    fn test_aff4_compression_all_types() {
-        use types::Aff4Compression;
+    fn test_aff4_chunk_cache_size_limit() {
+        // Verify cache size limit constant is defined
+        const MAX_AFF4_CACHE_BYTES: usize = 64 * 1024 * 1024; // 64 MB
+        const MAX_AFF4_CACHE_ENTRIES: usize = 256;
 
-        // Verify all compression types are defined
-        let none = Aff4Compression::None;
-        let deflate = Aff4Compression::Deflate;
-        let snappy = Aff4Compression::Snappy;
-        let lz4 = Aff4Compression::Lz4;
+        // Verify limits are reasonable
+        assert_eq!(MAX_AFF4_CACHE_BYTES, 67_108_864);
+        assert_eq!(MAX_AFF4_CACHE_ENTRIES, 256);
 
-        // Test default
-        assert!(matches!(none, Aff4Compression::None));
-        assert!(matches!(deflate, Aff4Compression::Deflate));
-        assert!(matches!(snappy, Aff4Compression::Snappy));
-        assert!(matches!(lz4, Aff4Compression::Lz4));
+        // A single chunk should fit well within cache
+        let typical_chunk_size = 32768; // 32 KB
+        assert!(typical_chunk_size < MAX_AFF4_CACHE_BYTES);
     }
 
-    #[test]
-    fn test_aff4_bevy_index_entry_size() {
-        use types::Aff4BevyIndexEntry;
-
-        // Verify bevy index entry has expected structure
-        let entry = Aff4BevyIndexEntry {
-            offset: 0,
-            length: 32768,
-        };
-
-        assert_eq!(entry.offset, 0);
-        assert_eq!(entry.length, 32768);
-    }
+    // ============================================================
+    // Compression and Stream Tests
+    // ============================================================
 
     #[test]
-    fn test_aff4_chunk_size_calculation() {
-        // Test chunk size calculations don't overflow
-        let chunk_size: usize = 32768; // 32 KB
-        let chunk_count: usize = 10000;
+    fn test_aff4_compression_types() {
+        // Test all compression types via URI parsing
+        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#NullCompressor"), Aff4Compression::None);
+        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#DeflateCompressor"), Aff4Compression::Deflate);
+        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#SnappyCompressor"), Aff4Compression::Snappy);
+        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#Lz4Compressor"), Aff4Compression::Lz4);
 
-        // This should not overflow for reasonable values
-        let total_size = chunk_size.checked_mul(chunk_count);
-        assert!(total_size.is_some());
-        assert_eq!(total_size.unwrap(), 327_680_000);
+        // Test unknown compressor
+        assert!(matches!(Aff4Compression::from_uri("http://aff4.org/Schema#UnknownCompressor"), Aff4Compression::Unknown(_)));
+        assert!(matches!(Aff4Compression::from_uri(""), Aff4Compression::Unknown(_)));
     }
 
     #[test]
@@ -736,6 +699,43 @@ mod tests {
     }
 
     #[test]
+    fn test_aff4_stream_with_various_chunk_sizes() {
+        // Test with different chunk sizes
+        for chunk_size in [512, 4096, 32768, 65536, 1048576] {
+            let mut stream = Aff4ImageStream::default();
+            stream.chunk_size = chunk_size;
+            assert_eq!(stream.chunk_size, chunk_size);
+        }
+    }
+
+    #[test]
+    fn test_aff4_stream_size_calculations() {
+        let mut stream = Aff4ImageStream::default();
+        stream.size = 1024 * 1024 * 100; // 100 MB
+        stream.chunk_size = 32768;
+
+        // Calculate expected chunks
+        let expected_chunks = (stream.size + stream.chunk_size as u64 - 1) / stream.chunk_size as u64;
+        assert_eq!(expected_chunks, 3200);
+    }
+
+    // ============================================================
+    // Volume and Object Type Tests
+    // ============================================================
+
+    #[test]
+    fn test_aff4_object_types() {
+        // Test all object types
+        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#ImageStream"), Aff4ObjectType::ImageStream);
+        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#Map"), Aff4ObjectType::Map);
+        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#ZipVolume"), Aff4ObjectType::ZipVolume);
+
+        // Test unknown type
+        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#SomethingElse"), Aff4ObjectType::Unknown);
+        assert_eq!(Aff4ObjectType::from_uri(""), Aff4ObjectType::Unknown);
+    }
+
+    #[test]
     fn test_aff4_volume_default_values() {
         let volume = Aff4Volume::default();
 
@@ -747,18 +747,70 @@ mod tests {
     }
 
     #[test]
-    fn test_aff4_chunk_cache_size_limit() {
-        // Verify cache size limit constant is defined
-        const MAX_AFF4_CACHE_BYTES: usize = 64 * 1024 * 1024; // 64 MB
-        const MAX_AFF4_CACHE_ENTRIES: usize = 256;
+    fn test_aff4_volume_with_multiple_streams() {
+        let mut volume = Aff4Volume::default();
+        volume.urn = "aff4://test-volume".to_string();
 
-        // Verify limits are reasonable
-        assert_eq!(MAX_AFF4_CACHE_BYTES, 67_108_864);
-        assert_eq!(MAX_AFF4_CACHE_ENTRIES, 256);
+        // Add multiple streams
+        for i in 0..5 {
+            let mut stream = Aff4ImageStream::default();
+            stream.urn = format!("aff4://test-volume/stream{}", i);
+            stream.size = (i as u64 + 1) * 1024 * 1024;
+            volume.streams.push(stream);
+        }
 
-        // A single chunk should fit well within cache
-        let typical_chunk_size = 32768; // 32 KB
-        assert!(typical_chunk_size < MAX_AFF4_CACHE_BYTES);
+        assert_eq!(volume.streams.len(), 5);
+        assert_eq!(volume.streams[0].size, 1 * 1024 * 1024);
+        assert_eq!(volume.streams[4].size, 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_aff4_volume_urn_formats() {
+        let urns = [
+            "aff4://simple",
+            "aff4://test-volume/stream1",
+            "aff4://volume.with.dots/path/to/stream",
+            "aff4://guid-12345678-1234-1234-1234-123456789abc",
+        ];
+
+        for urn in urns {
+            let mut volume = Aff4Volume::default();
+            volume.urn = urn.to_string();
+            assert_eq!(volume.urn, urn);
+        }
+    }
+
+    // ============================================================
+    // Bevy Index Tests
+    // ============================================================
+
+    #[test]
+    fn test_aff4_bevy_index_entry_edge_cases() {
+        // Test with zero offset and length
+        let mut bytes = [0u8; 12];
+        bytes[0..8].copy_from_slice(&0u64.to_le_bytes());
+        bytes[8..12].copy_from_slice(&0u32.to_le_bytes());
+
+        let entry = Aff4BevyIndexEntry::parse(&bytes).unwrap();
+        assert_eq!(entry.offset, 0);
+        assert_eq!(entry.length, 0);
+
+        // Test with maximum values
+        let mut bytes_max = [0u8; 12];
+        bytes_max[0..8].copy_from_slice(&u64::MAX.to_le_bytes());
+        bytes_max[8..12].copy_from_slice(&u32::MAX.to_le_bytes());
+
+        let entry_max = Aff4BevyIndexEntry::parse(&bytes_max).unwrap();
+        assert_eq!(entry_max.offset, u64::MAX);
+        assert_eq!(entry_max.length, u32::MAX);
+    }
+
+    #[test]
+    fn test_aff4_bevy_index_entry_truncated() {
+        // Test with truncated data (less than 12 bytes)
+        let bytes = [0u8; 8];
+        let result = Aff4BevyIndexEntry::parse(&bytes);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -772,5 +824,164 @@ mod tests {
 
         assert_eq!(bevy_index, 2);
         assert_eq!(chunk_in_bevy, 904);
+    }
+
+    // ============================================================
+    // Turtle Parser Tests
+    // ============================================================
+
+    #[test]
+    fn test_turtle_parser_empty_content() {
+        let statements = TurtleParser::parse("");
+        assert!(statements.is_empty());
+    }
+
+    #[test]
+    fn test_turtle_parser_only_prefixes() {
+        let content = r#"
+@prefix aff4: <http://aff4.org/Schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+"#;
+        let statements = TurtleParser::parse(content);
+        // No actual statements, just prefixes
+        assert!(statements.is_empty());
+    }
+
+    #[test]
+    fn test_turtle_parser_malformed_content() {
+        // Parser should handle malformed content gracefully
+        let content = "this is not valid turtle syntax !!!";
+        let statements = TurtleParser::parse(content);
+        // Should not panic, may return empty or partial results
+        assert!(statements.len() <= 1);
+    }
+
+    #[test]
+    fn test_turtle_parser_with_comments() {
+        let content = r#"
+# This is a comment
+@prefix aff4: <http://aff4.org/Schema#> .
+# Another comment
+<aff4://test> aff4:size "100" .
+"#;
+        let statements = TurtleParser::parse(content);
+        // Should parse the one valid statement
+        assert!(!statements.is_empty());
+    }
+
+    #[test]
+    fn test_turtle_parser_uri_expansion_via_parse() {
+        // Test prefix expansion through the parser
+        let content = r#"
+@prefix aff4: <http://aff4.org/Schema#> .
+<aff4://test> aff4:size "100" .
+"#;
+        let statements = TurtleParser::parse(content);
+        assert!(!statements.is_empty());
+
+        // The predicate should be expanded
+        let size_statement = statements.iter().find(|s| s.predicate.contains("size"));
+        assert!(size_statement.is_some());
+    }
+
+    #[test]
+    fn test_aff4_statement_creation() {
+        let statement = Aff4Statement {
+            subject: "aff4://test-subject".to_string(),
+            predicate: "http://aff4.org/Schema#type".to_string(),
+            object: "http://aff4.org/Schema#ImageStream".to_string(),
+        };
+
+        assert!(statement.subject.contains("test-subject"));
+        assert!(statement.predicate.contains("type"));
+        assert!(statement.object.contains("ImageStream"));
+    }
+
+    // ============================================================
+    // Snappy/LZ4 Decompression Tests
+    // ============================================================
+
+    #[test]
+    fn test_snappy_decompression() {
+        // Test that snappy decompression works correctly
+        let original = b"Hello, this is test data for snappy compression!";
+
+        // Compress with snappy
+        let compressed = snap::raw::Encoder::new()
+            .compress_vec(original)
+            .expect("Snappy compression failed");
+
+        // Decompress
+        let decompressed = snap::raw::Decoder::new()
+            .decompress_vec(&compressed)
+            .expect("Snappy decompression failed");
+
+        assert_eq!(decompressed, original);
+    }
+
+    #[test]
+    fn test_lz4_decompression() {
+        // Test that LZ4 decompression works correctly
+        let original = b"Hello, this is test data for LZ4 compression!";
+
+        // Compress with LZ4 (with size prepended - the format AFF4 uses)
+        let compressed = lz4_flex::compress_prepend_size(original);
+
+        // Decompress
+        let decompressed =
+            lz4_flex::decompress_size_prepended(&compressed).expect("LZ4 decompression failed");
+
+        assert_eq!(decompressed, original);
+    }
+
+    #[test]
+    fn test_snappy_decompression_larger_data() {
+        // Test with larger, more realistic data
+        let original: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
+
+        let compressed = snap::raw::Encoder::new()
+            .compress_vec(&original)
+            .expect("Snappy compression failed");
+
+        let decompressed = snap::raw::Decoder::new()
+            .decompress_vec(&compressed)
+            .expect("Snappy decompression failed");
+
+        assert_eq!(decompressed, original);
+        // Verify compression actually worked
+        assert!(compressed.len() < original.len());
+    }
+
+    #[test]
+    fn test_lz4_decompression_larger_data() {
+        // Test with larger, more realistic data
+        let original: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
+
+        let compressed = lz4_flex::compress_prepend_size(&original);
+
+        let decompressed =
+            lz4_flex::decompress_size_prepended(&compressed).expect("LZ4 decompression failed");
+
+        assert_eq!(decompressed, original);
+        // Verify compression actually worked
+        assert!(compressed.len() < original.len());
+    }
+
+    #[test]
+    fn test_snappy_invalid_data_handling() {
+        // Test that invalid data is handled gracefully
+        let invalid = vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+
+        let result = snap::raw::Decoder::new().decompress_vec(&invalid);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_lz4_invalid_data_handling() {
+        // Test that invalid data is handled gracefully
+        let invalid = vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+
+        let result = lz4_flex::decompress_size_prepended(&invalid);
+        assert!(result.is_err());
     }
 }

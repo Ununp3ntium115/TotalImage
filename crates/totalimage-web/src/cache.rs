@@ -13,8 +13,10 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const CACHE_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 
 /// Maximum cache size in bytes (100 MB)
-#[allow(dead_code)] // Used by evict_if_needed() - reserved for future automatic eviction
 const MAX_CACHE_SIZE: u64 = 100 * 1024 * 1024;
+
+/// Cache maintenance interval (1 hour)
+const MAINTENANCE_INTERVAL_SECS: u64 = 60 * 60;
 
 /// Table definitions
 const VAULT_INFO_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("vault_info");
@@ -216,7 +218,6 @@ impl MetadataCache {
     }
 
     /// Clean up expired entries from all tables
-    #[allow(dead_code)] // Reserved for future automatic cache maintenance
     pub fn cleanup_expired(&self) -> Result<usize, Box<dyn std::error::Error>> {
         let db = self.db.lock().unwrap();
         let mut removed_count = 0;
@@ -238,7 +239,6 @@ impl MetadataCache {
     }
 
     /// Helper to clean up a specific table
-    #[allow(dead_code)] // Used by cleanup_expired() - reserved for future automatic maintenance
     fn cleanup_table(
         &self,
         db: &Database,
@@ -310,7 +310,6 @@ impl MetadataCache {
     }
 
     /// Evict oldest entries if cache is too large (LRU eviction)
-    #[allow(dead_code)] // Reserved for future automatic cache size management
     pub fn evict_if_needed(&self) -> Result<(), Box<dyn std::error::Error>> {
         let db = self.db.lock().unwrap();
         let size = self.cache_size_with_db(&db)?;
@@ -331,7 +330,6 @@ impl MetadataCache {
     }
 
     /// Evict oldest entries by percentage
-    #[allow(dead_code)] // Used by evict_if_needed() - reserved for future LRU eviction
     fn evict_oldest(&self, percentage: f64) -> Result<usize, Box<dyn std::error::Error>> {
         let db = self.db.lock().unwrap();
         let mut all_entries = Vec::new();
@@ -445,6 +443,42 @@ impl MetadataCache {
             dir_listings_count: dir_table.len()?,
             estimated_size_bytes,
         })
+    }
+
+    /// Spawn a background task for automatic cache maintenance
+    ///
+    /// This task runs periodically to:
+    /// - Clean up expired entries
+    /// - Evict oldest entries if cache exceeds size limit
+    ///
+    /// The task runs every MAINTENANCE_INTERVAL_SECS (1 hour by default)
+    pub fn spawn_maintenance_task(cache: Arc<Self>) {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(MAINTENANCE_INTERVAL_SECS));
+
+            loop {
+                interval.tick().await;
+
+                tracing::debug!("Running cache maintenance...");
+
+                // Clean expired entries
+                match cache.cleanup_expired() {
+                    Ok(removed) => {
+                        if removed > 0 {
+                            tracing::info!("Cache maintenance: removed {} expired entries", removed);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Cache cleanup failed: {}", e);
+                    }
+                }
+
+                // Check size and evict if needed
+                if let Err(e) = cache.evict_if_needed() {
+                    tracing::warn!("Cache eviction check failed: {}", e);
+                }
+            }
+        });
     }
 }
 

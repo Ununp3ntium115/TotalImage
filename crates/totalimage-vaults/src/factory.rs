@@ -74,14 +74,13 @@ pub fn detect_vault_type(path: &Path) -> Result<VaultType> {
     // Check VHD footer at end of file
     if let Ok(metadata) = file.metadata() {
         let file_size = metadata.len();
-        if file_size >= 512 {
-            if file.seek(SeekFrom::End(-512)).is_ok() {
+        if file_size >= 512
+            && file.seek(SeekFrom::End(-512)).is_ok() {
                 let mut footer = [0u8; 8];
-                if file.read_exact(&mut footer).is_ok() && &footer == VHD_MAGIC {
+                if file.read_exact(&mut footer).is_ok() && footer == VHD_MAGIC {
                     return Ok(VaultType::Vhd);
                 }
             }
-        }
     }
 
     // Fall back to extension
