@@ -1268,8 +1268,9 @@ mod tests {
     #[test]
     fn test_tool_enum_names() {
         let cache = create_test_cache();
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
 
-        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache: cache.clone() });
+        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache: cache.clone(), allowed_roots: allowed_roots.clone() });
         assert_eq!(analyze.name(), "analyze_disk_image");
 
         let list_partitions = ToolEnum::ListPartitions(ListPartitionsTool { cache: cache.clone() });
@@ -1278,28 +1279,30 @@ mod tests {
         let list_files = ToolEnum::ListFiles(ListFilesTool { cache });
         assert_eq!(list_files.name(), "list_files");
 
-        let extract = ToolEnum::ExtractFile(ExtractFileTool {});
+        let extract = ToolEnum::ExtractFile(ExtractFileTool { allowed_roots: allowed_roots.clone() });
         assert_eq!(extract.name(), "extract_file");
 
-        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool {});
+        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool { allowed_roots });
         assert_eq!(validate.name(), "validate_integrity");
     }
 
     #[test]
     fn test_tool_enum_descriptions() {
         let cache = create_test_cache();
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
 
-        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache });
+        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache, allowed_roots: allowed_roots.clone() });
         assert!(analyze.description().contains("disk image"));
 
-        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool {});
+        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool { allowed_roots });
         assert!(validate.description().contains("integrity"));
     }
 
     #[test]
     fn test_tool_enum_definition() {
         let cache = create_test_cache();
-        let tool = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache });
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
+        let tool = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache, allowed_roots });
 
         let def = tool.definition();
         assert_eq!(def.name, "analyze_disk_image");
