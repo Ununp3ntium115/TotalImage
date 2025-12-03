@@ -10,7 +10,7 @@ use crate::metrics::{self, MetricsState};
 use crate::protocol::*;
 use crate::tools::*;
 use crate::websocket::{ws_handler, WsState};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use axum::{
     extract::State,
     http::StatusCode,
@@ -24,6 +24,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use totalimage_core::{allowed_roots_from_env, allowed_roots_from_env_var};
 
 /// Server mode configuration
 #[derive(Debug, Clone)]
@@ -58,6 +59,7 @@ pub struct MCPServer {
     tools: Vec<ToolEnum>,
     /// Cache for tool results
     cache: Arc<ToolCache>,
+    allowed_roots: Arc<Vec<PathBuf>>,
 }
 
 impl MCPServer {
@@ -70,24 +72,14 @@ impl MCPServer {
             env!("CARGO_PKG_VERSION"),
         )?);
 
-        let tools: Vec<ToolEnum> = vec![
-            ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ListPartitions(ListPartitionsTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ListFiles(ListFilesTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ExtractFile(ExtractFileTool {}),
-            ToolEnum::ValidateIntegrity(ValidateIntegrityTool {}),
-        ];
+        let allowed_roots = resolve_allowed_roots()?;
+        let tools = build_tools(cache.clone(), allowed_roots.clone());
 
         Ok(Self {
             mode: ServerMode::Standalone(config),
             tools,
             cache,
+            allowed_roots,
         })
     }
 
@@ -100,24 +92,14 @@ impl MCPServer {
             env!("CARGO_PKG_VERSION"),
         )?);
 
-        let tools: Vec<ToolEnum> = vec![
-            ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ListPartitions(ListPartitionsTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ListFiles(ListFilesTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ExtractFile(ExtractFileTool {}),
-            ToolEnum::ValidateIntegrity(ValidateIntegrityTool {}),
-        ];
+        let allowed_roots = resolve_allowed_roots()?;
+        let tools = build_tools(cache.clone(), allowed_roots.clone());
 
         Ok(Self {
             mode: ServerMode::Integrated(config),
             tools,
             cache,
+            allowed_roots,
         })
     }
 
@@ -438,6 +420,36 @@ fn generate_cache_key(tool_name: &str, arguments: &Option<serde_json::Value>) ->
     }
 
     format!("{}:{:x}", tool_name, hasher.finish())
+}
+
+fn resolve_allowed_roots() -> Result<Arc<Vec<PathBuf>>> {
+    let roots = allowed_roots_from_env_var("TOTALIMAGE_MCP_ALLOWED_ROOT")
+        .or_else(|_| allowed_roots_from_env())
+        .map_err(|e| anyhow!(e.to_string()))?;
+    Ok(Arc::new(roots))
+}
+
+fn build_tools(cache: Arc<ToolCache>, allowed_roots: Arc<Vec<PathBuf>>) -> Vec<ToolEnum> {
+    vec![
+        ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool {
+            cache: cache.clone(),
+            allowed_roots: allowed_roots.clone(),
+        }),
+        ToolEnum::ListPartitions(ListPartitionsTool {
+            cache: cache.clone(),
+            allowed_roots: allowed_roots.clone(),
+        }),
+        ToolEnum::ListFiles(ListFilesTool {
+            cache: cache.clone(),
+            allowed_roots: allowed_roots.clone(),
+        }),
+        ToolEnum::ExtractFile(ExtractFileTool {
+            allowed_roots: allowed_roots.clone(),
+        }),
+        ToolEnum::ValidateIntegrity(ValidateIntegrityTool {
+            allowed_roots,
+        }),
+    ]
 }
 
 // HTTP handler state
