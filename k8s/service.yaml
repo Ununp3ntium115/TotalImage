@@ -1,0 +1,55 @@
+---
+# TotalImage Services
+apiVersion: v1
+kind: Service
+metadata:
+  name: totalimage-web
+  labels:
+    app: totalimage
+    component: web
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  selector:
+    app: totalimage
+    component: web
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: totalimage-mcp
+  labels:
+    app: totalimage
+    component: mcp
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3002
+      targetPort: 3002
+      protocol: TCP
+      name: http
+  selector:
+    app: totalimage
+    component: mcp
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fire-marshal
+  labels:
+    app: totalimage
+    component: fire-marshal
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3001
+      targetPort: 3001
+      protocol: TCP
+      name: http
+  selector:
+    app: totalimage
+    component: fire-marshal

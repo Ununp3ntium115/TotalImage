@@ -247,18 +247,20 @@ impl DirectoryCell for IsoRootDirectory {
     }
 
     fn list_occupants(&self) -> Result<Vec<OccupantInfo>> {
-        // Simplified: return empty list
-        // Full implementation would need access to the stream to read directory entries
-        // Note: Rock Ridge extensions are now supported for long filenames and POSIX attributes
+        // NOTE: ISO directory listing not implemented in DirectoryCell trait
+        // The required functionality exists in IsoTerritory::read_directory() but cannot
+        // be called here due to DirectoryCell trait not providing stream access.
+        // Use Territory::extract_file() or direct IsoTerritory::read_directory() calls instead.
+        // This is a design limitation of the DirectoryCell trait that affects ISO-9660.
         Ok(Vec::new())
     }
 
     fn enter(&self, _name: &str) -> Result<Box<dyn DirectoryCell>> {
-        // TODO: Subdirectory navigation implementation
-        // - Search directory entries for matching name
-        // - Load subdirectory extent
-        // - Return new DirectoryCell for subdirectory
-        // Simplified: return error
+        // NOTE: ISO subdirectory navigation not implemented in DirectoryCell trait
+        // The required functionality exists in IsoTerritory::read_directory() but cannot
+        // be called here due to DirectoryCell trait not providing stream access.
+        // Use Territory::navigate_to() or direct IsoTerritory::read_directory() calls instead.
+        // This is a design limitation of the DirectoryCell trait that affects ISO-9660.
         Err(Error::not_found("Subdirectory not found".to_string()))
     }
 }

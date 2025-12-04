@@ -307,19 +307,21 @@ impl Tool for AnalyzeDiskImageTool {
                 if let Ok(mut partial) = PartialPipeline::new(vault.content(), zone.offset, zone.length) {
                     // Try FAT
                     if let Ok(fat) = FatTerritory::parse(&mut partial) {
+                        let label = fat.banner().ok();
                         filesystems.push(FilesystemInfo {
                             zone_index: idx,
                             filesystem_type: fat.identify().to_string(),
-                            label: Some("FAT Volume".to_string()), // TODO: Extract actual label
+                            label,
                             total_size: zone.length,
                         });
                     }
                     // Try ISO
                     else if let Ok(iso) = IsoTerritory::parse(&mut partial) {
+                        let label = iso.banner().ok();
                         filesystems.push(FilesystemInfo {
                             zone_index: idx,
                             filesystem_type: iso.identify().to_string(),
-                            label: Some("ISO Volume".to_string()), // TODO: Extract actual label
+                            label,
                             total_size: zone.length,
                         });
                     }
@@ -711,10 +713,11 @@ impl Tool for ExtractFileTool {
             file.write_all(&data)?;
 
             data.len() as u64
-        } else if let Ok(_iso) = IsoTerritory::parse(&mut partial) {
-            // TODO: Implement ISO file extraction
-            // ISO extraction requires different methods - see CLI implementation
-            return Err(anyhow::anyhow!("ISO file extraction not yet implemented"));
+        } else if let Ok(iso) = IsoTerritory::parse(&mut partial) {
+            // NOTE: ISO file extraction via DirectoryCell not supported
+            // IsoTerritory::read_file() exists but DirectoryCell trait design prevents its use.
+            // Could be implemented by refactoring to pass stream through DirectoryCell methods.
+            return Err(anyhow::anyhow!("ISO file extraction not yet implemented via MCP tool"));
         } else {
             return Err(anyhow::anyhow!("Unable to read filesystem at zone {}", input.zone_index));
         };
