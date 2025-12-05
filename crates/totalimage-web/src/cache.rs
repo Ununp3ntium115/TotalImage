@@ -258,8 +258,8 @@ impl MetadataCache {
                 let bytes = value.value();
                 if bytes.len() >= 8 {
                     let timestamp = u64::from_le_bytes([
-                        bytes[0], bytes[1], bytes[2], bytes[3],
-                        bytes[4], bytes[5], bytes[6], bytes[7],
+                        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
+                        bytes[7],
                     ]);
                     let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -348,8 +348,8 @@ impl MetadataCache {
                 let bytes = value.value();
                 if bytes.len() >= 8 {
                     let timestamp = u64::from_le_bytes([
-                        bytes[0], bytes[1], bytes[2], bytes[3],
-                        bytes[4], bytes[5], bytes[6], bytes[7],
+                        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
+                        bytes[7],
                     ]);
                     all_entries.push((
                         "vault_info".to_string(),
@@ -366,8 +366,8 @@ impl MetadataCache {
                 let bytes = value.value();
                 if bytes.len() >= 8 {
                     let timestamp = u64::from_le_bytes([
-                        bytes[0], bytes[1], bytes[2], bytes[3],
-                        bytes[4], bytes[5], bytes[6], bytes[7],
+                        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
+                        bytes[7],
                     ]);
                     all_entries.push((
                         "zone_table".to_string(),
@@ -384,8 +384,8 @@ impl MetadataCache {
                 let bytes = value.value();
                 if bytes.len() >= 8 {
                     let timestamp = u64::from_le_bytes([
-                        bytes[0], bytes[1], bytes[2], bytes[3],
-                        bytes[4], bytes[5], bytes[6], bytes[7],
+                        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
+                        bytes[7],
                     ]);
                     all_entries.push((
                         "dir_listings".to_string(),
@@ -413,9 +413,15 @@ impl MetadataCache {
 
                 for (table_name, key, _) in &entries_to_remove {
                     match table_name.as_str() {
-                        "vault_info" => { vault_table.remove(key.as_str())?; }
-                        "zone_table" => { zone_table.remove(key.as_str())?; }
-                        "dir_listings" => { dir_table.remove(key.as_str())?; }
+                        "vault_info" => {
+                            vault_table.remove(key.as_str())?;
+                        }
+                        "zone_table" => {
+                            zone_table.remove(key.as_str())?;
+                        }
+                        "dir_listings" => {
+                            dir_table.remove(key.as_str())?;
+                        }
                         _ => {}
                     }
                 }
@@ -486,7 +492,10 @@ mod tests {
         };
 
         // Initially empty
-        assert!(cache.get_vault_info::<TestData>("test.img").unwrap().is_none());
+        assert!(cache
+            .get_vault_info::<TestData>("test.img")
+            .unwrap()
+            .is_none());
 
         // Set data
         cache.set_vault_info("test.img", &test_data).unwrap();
@@ -526,7 +535,10 @@ mod tests {
         };
 
         // Initially empty
-        assert!(cache.get_dir_listing::<TestData>("/test/path").unwrap().is_none());
+        assert!(cache
+            .get_dir_listing::<TestData>("/test/path")
+            .unwrap()
+            .is_none());
 
         // Set data
         cache.set_dir_listing("/test/path", &test_data).unwrap();
@@ -546,7 +558,9 @@ mod tests {
                 name: format!("vault_{}", i),
                 value: i as u64,
             };
-            cache.set_vault_info(&format!("vault_{}.img", i), &data).unwrap();
+            cache
+                .set_vault_info(&format!("vault_{}.img", i), &data)
+                .unwrap();
         }
 
         // Retrieve and verify
@@ -597,7 +611,10 @@ mod tests {
         assert_eq!(removed, 0);
 
         // Entry should still be there
-        assert!(cache.get_vault_info::<TestData>("test.img").unwrap().is_some());
+        assert!(cache
+            .get_vault_info::<TestData>("test.img")
+            .unwrap()
+            .is_some());
     }
 
     #[test]
@@ -630,7 +647,9 @@ mod tests {
                 name: format!("vault_{}", i),
                 value: i as u64,
             };
-            cache.set_vault_info(&format!("vault_{}.img", i), &data).unwrap();
+            cache
+                .set_vault_info(&format!("vault_{}.img", i), &data)
+                .unwrap();
 
             // Small delay to ensure different timestamps
             std::thread::sleep(std::time::Duration::from_millis(10));
@@ -641,10 +660,19 @@ mod tests {
         assert_eq!(evicted, 2);
 
         // Oldest entries should be gone
-        assert!(cache.get_vault_info::<TestData>("vault_0.img").unwrap().is_none());
-        assert!(cache.get_vault_info::<TestData>("vault_1.img").unwrap().is_none());
+        assert!(cache
+            .get_vault_info::<TestData>("vault_0.img")
+            .unwrap()
+            .is_none());
+        assert!(cache
+            .get_vault_info::<TestData>("vault_1.img")
+            .unwrap()
+            .is_none());
 
         // Newer entries should still be present
-        assert!(cache.get_vault_info::<TestData>("vault_19.img").unwrap().is_some());
+        assert!(cache
+            .get_vault_info::<TestData>("vault_19.img")
+            .unwrap()
+            .is_some());
     }
 }

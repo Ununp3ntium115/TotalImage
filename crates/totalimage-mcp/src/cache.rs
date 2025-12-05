@@ -52,7 +52,11 @@ pub struct ToolCache {
 
 impl ToolCache {
     /// Create a new tool cache
-    pub fn new(cache_path: PathBuf, tool_name: impl Into<String>, version: impl Into<String>) -> Result<Self> {
+    pub fn new(
+        cache_path: PathBuf,
+        tool_name: impl Into<String>,
+        version: impl Into<String>,
+    ) -> Result<Self> {
         std::fs::create_dir_all(cache_path.parent().unwrap_or(cache_path.as_path()))?;
 
         let db = Database::create(&cache_path)?;

@@ -92,10 +92,7 @@ impl AcquireProgress {
                 self.operation, percent, size_str, speed_str, eta_str
             )
         } else {
-            format!(
-                "{}: {} @ {}",
-                self.operation, size_str, speed_str
-            )
+            format!("{}: {} @ {}", self.operation, size_str, speed_str)
         }
     }
 }
@@ -165,12 +162,7 @@ mod tests {
         let start = Instant::now();
         std::thread::sleep(Duration::from_millis(10));
 
-        let progress = AcquireProgress::calculate(
-            Some(1000),
-            500,
-            start,
-            "Copying",
-        );
+        let progress = AcquireProgress::calculate(Some(1000), 500, start, "Copying");
 
         assert!(progress.percent_complete.is_some());
         assert!((progress.percent_complete.unwrap() - 50.0).abs() < 0.1);

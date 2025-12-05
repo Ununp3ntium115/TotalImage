@@ -121,9 +121,7 @@ impl Aff4Vault {
             volume,
             stream,
             bevy_index,
-            chunk_cache: LruCache::new(
-                NonZeroUsize::new(MAX_AFF4_CACHE_ENTRIES).unwrap()
-            ),
+            chunk_cache: LruCache::new(NonZeroUsize::new(MAX_AFF4_CACHE_ENTRIES).unwrap()),
             cache_bytes: 0,
             position: 0,
             identifier,
@@ -133,10 +131,7 @@ impl Aff4Vault {
     /// Parse metadata from the container
     fn parse_metadata(archive: &mut zip::ZipArchive<File>) -> Result<Aff4Volume> {
         // Look for container.description or information.turtle
-        let metadata_paths = [
-            "container.description",
-            "information.turtle",
-        ];
+        let metadata_paths = ["container.description", "information.turtle"];
 
         let mut statements = Vec::new();
 
@@ -180,12 +175,13 @@ impl Aff4Vault {
         for stmt in &statements {
             // Find image streams
             if stmt.predicate.contains("type") && stmt.object.contains("ImageStream") {
-                let stream = streams.entry(stmt.subject.clone()).or_insert_with(|| {
-                    Aff4ImageStream {
-                        urn: stmt.subject.clone(),
-                        ..Default::default()
-                    }
-                });
+                let stream =
+                    streams
+                        .entry(stmt.subject.clone())
+                        .or_insert_with(|| Aff4ImageStream {
+                            urn: stmt.subject.clone(),
+                            ..Default::default()
+                        });
                 stream.urn = stmt.subject.clone();
             }
 
@@ -238,7 +234,8 @@ impl Aff4Vault {
         // Try to find data paths for streams
         for stream in &mut volume.streams {
             // Convert URN to file path in ZIP
-            let urn_path = stream.urn
+            let urn_path = stream
+                .urn
                 .replace("aff4://", "aff4%3A//")
                 .replace(':', "%3A");
 
@@ -269,7 +266,8 @@ impl Aff4Vault {
         let mut index_entries = Vec::new();
 
         // Find all index files for this stream
-        let urn_path = stream.urn
+        let urn_path = stream
+            .urn
             .replace("aff4://", "aff4%3A//")
             .replace(':', "%3A");
 
@@ -278,7 +276,9 @@ impl Aff4Vault {
             .filter_map(|i| {
                 archive.by_index(i).ok().and_then(|file| {
                     let name = file.name().to_string();
-                    if name.ends_with(".index") && (name.contains(&urn_path) || name.contains(&stream.urn)) {
+                    if name.ends_with(".index")
+                        && (name.contains(&urn_path) || name.contains(&stream.urn))
+                    {
                         Some(name)
                     } else {
                         None
@@ -336,26 +336,27 @@ impl Aff4Vault {
         let segment_name = format!("{:08x}", segment_index);
 
         // Find the segment file
-        let urn_path = self.stream.urn
+        let urn_path = self
+            .stream
+            .urn
             .replace("aff4://", "aff4%3A//")
             .replace(':', "%3A");
         let stream_urn = self.stream.urn.clone();
 
         // First find the segment file name
-        let segment_file: Option<String> = (0..self.archive.len())
-            .find_map(|i| {
-                self.archive.by_index(i).ok().and_then(|file| {
-                    let name = file.name().to_string();
-                    if (name.contains(&urn_path) || name.contains(&stream_urn))
-                        && name.ends_with(&segment_name)
-                        && !name.ends_with(".index")
-                    {
-                        Some(name)
-                    } else {
-                        None
-                    }
-                })
-            });
+        let segment_file: Option<String> = (0..self.archive.len()).find_map(|i| {
+            self.archive.by_index(i).ok().and_then(|file| {
+                let name = file.name().to_string();
+                if (name.contains(&urn_path) || name.contains(&stream_urn))
+                    && name.ends_with(&segment_name)
+                    && !name.ends_with(".index")
+                {
+                    Some(name)
+                } else {
+                    None
+                }
+            })
+        });
 
         // Now read the segment file
         let segment_data: Option<Vec<u8>> = if let Some(ref name) = segment_file {
@@ -371,8 +372,7 @@ impl Aff4Vault {
             None
         };
 
-        let segment = segment_data
-            .ok_or_else(|| Error::invalid_vault("Bevy segment not found"))?;
+        let segment = segment_data.ok_or_else(|| Error::invalid_vault("Bevy segment not found"))?;
 
         // Extract and decompress the chunk
         // The offset is relative to this bevy segment, not absolute
@@ -383,14 +383,19 @@ impl Aff4Vault {
         if chunk_offset >= segment.len() {
             return Err(Error::invalid_vault(format!(
                 "AFF4 chunk {} offset {} exceeds segment size {}",
-                chunk_index, chunk_offset, segment.len()
+                chunk_index,
+                chunk_offset,
+                segment.len()
             )));
         }
 
         if chunk_offset + chunk_len > segment.len() {
             return Err(Error::invalid_vault(format!(
                 "AFF4 chunk {} range [{}..{}] exceeds segment size {}",
-                chunk_index, chunk_offset, chunk_offset + chunk_len, segment.len()
+                chunk_index,
+                chunk_offset,
+                chunk_offset + chunk_len,
+                segment.len()
             )));
         }
 
@@ -411,12 +416,14 @@ impl Aff4Vault {
             }
             Aff4Compression::Snappy => {
                 // Snappy decompression using the snap crate
-                snap::raw::Decoder::new().decompress_vec(compressed).map_err(|e| {
-                    Error::invalid_vault(format!(
-                        "AFF4 chunk {} snappy decompression failed: {}",
-                        chunk_index, e
-                    ))
-                })?
+                snap::raw::Decoder::new()
+                    .decompress_vec(compressed)
+                    .map_err(|e| {
+                        Error::invalid_vault(format!(
+                            "AFF4 chunk {} snappy decompression failed: {}",
+                            chunk_index, e
+                        ))
+                    })?
             }
             Aff4Compression::Lz4 => {
                 // LZ4 decompression using lz4_flex crate
@@ -438,21 +445,20 @@ impl Aff4Vault {
 
         // Cache the chunk with LRU eviction and byte-size tracking (GAP-007)
         let chunk_bytes = decompressed.len();
-        
+
         // Evict old entries if we exceed memory limit
-        while self.cache_bytes + chunk_bytes > MAX_AFF4_CACHE_BYTES 
-            && !self.chunk_cache.is_empty() 
+        while self.cache_bytes + chunk_bytes > MAX_AFF4_CACHE_BYTES && !self.chunk_cache.is_empty()
         {
             // LRU eviction: pop_lru removes least recently used
             if let Some((_, evicted_chunk)) = self.chunk_cache.pop_lru() {
                 self.cache_bytes = self.cache_bytes.saturating_sub(evicted_chunk.len());
             }
         }
-        
+
         // Insert new chunk into cache
         self.chunk_cache.put(chunk_index, decompressed.clone());
         self.cache_bytes += chunk_bytes;
-        
+
         tracing::trace!(
             "AFF4 cache: {} entries, {} bytes ({:.1}% of max)",
             self.chunk_cache.len(),
@@ -497,7 +503,8 @@ impl Read for Aff4Vault {
             let chunk_offset = (current_pos % chunk_size) as usize;
 
             // Read and decompress chunk
-            let chunk_data = self.read_chunk(chunk_index)
+            let chunk_data = self
+                .read_chunk(chunk_index)
                 .map_err(|e| std::io::Error::other(e.to_string()))?;
 
             // Calculate how much to copy
@@ -603,9 +610,9 @@ mod tests {
         assert!(statements.len() >= 3);
 
         // Check that we found the image stream
-        let has_image_stream = statements.iter().any(|s| {
-            s.subject.contains("test-image") && s.object.contains("ImageStream")
-        });
+        let has_image_stream = statements
+            .iter()
+            .any(|s| s.subject.contains("test-image") && s.object.contains("ImageStream"));
         assert!(has_image_stream);
     }
 
@@ -674,14 +681,32 @@ mod tests {
     #[test]
     fn test_aff4_compression_types() {
         // Test all compression types via URI parsing
-        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#NullCompressor"), Aff4Compression::None);
-        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#DeflateCompressor"), Aff4Compression::Deflate);
-        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#SnappyCompressor"), Aff4Compression::Snappy);
-        assert_eq!(Aff4Compression::from_uri("http://aff4.org/Schema#Lz4Compressor"), Aff4Compression::Lz4);
+        assert_eq!(
+            Aff4Compression::from_uri("http://aff4.org/Schema#NullCompressor"),
+            Aff4Compression::None
+        );
+        assert_eq!(
+            Aff4Compression::from_uri("http://aff4.org/Schema#DeflateCompressor"),
+            Aff4Compression::Deflate
+        );
+        assert_eq!(
+            Aff4Compression::from_uri("http://aff4.org/Schema#SnappyCompressor"),
+            Aff4Compression::Snappy
+        );
+        assert_eq!(
+            Aff4Compression::from_uri("http://aff4.org/Schema#Lz4Compressor"),
+            Aff4Compression::Lz4
+        );
 
         // Test unknown compressor
-        assert!(matches!(Aff4Compression::from_uri("http://aff4.org/Schema#UnknownCompressor"), Aff4Compression::Unknown(_)));
-        assert!(matches!(Aff4Compression::from_uri(""), Aff4Compression::Unknown(_)));
+        assert!(matches!(
+            Aff4Compression::from_uri("http://aff4.org/Schema#UnknownCompressor"),
+            Aff4Compression::Unknown(_)
+        ));
+        assert!(matches!(
+            Aff4Compression::from_uri(""),
+            Aff4Compression::Unknown(_)
+        ));
     }
 
     #[test]
@@ -730,12 +755,24 @@ mod tests {
     #[test]
     fn test_aff4_object_types() {
         // Test all object types
-        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#ImageStream"), Aff4ObjectType::ImageStream);
-        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#Map"), Aff4ObjectType::Map);
-        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#ZipVolume"), Aff4ObjectType::ZipVolume);
+        assert_eq!(
+            Aff4ObjectType::from_uri("http://aff4.org/Schema#ImageStream"),
+            Aff4ObjectType::ImageStream
+        );
+        assert_eq!(
+            Aff4ObjectType::from_uri("http://aff4.org/Schema#Map"),
+            Aff4ObjectType::Map
+        );
+        assert_eq!(
+            Aff4ObjectType::from_uri("http://aff4.org/Schema#ZipVolume"),
+            Aff4ObjectType::ZipVolume
+        );
 
         // Test unknown type
-        assert_eq!(Aff4ObjectType::from_uri("http://aff4.org/Schema#SomethingElse"), Aff4ObjectType::Unknown);
+        assert_eq!(
+            Aff4ObjectType::from_uri("http://aff4.org/Schema#SomethingElse"),
+            Aff4ObjectType::Unknown
+        );
         assert_eq!(Aff4ObjectType::from_uri(""), Aff4ObjectType::Unknown);
     }
 

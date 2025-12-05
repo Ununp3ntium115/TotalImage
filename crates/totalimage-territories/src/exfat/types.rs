@@ -81,13 +81,11 @@ impl ExfatBootSector {
         }
 
         let partition_offset = u64::from_le_bytes([
-            bytes[64], bytes[65], bytes[66], bytes[67],
-            bytes[68], bytes[69], bytes[70], bytes[71],
+            bytes[64], bytes[65], bytes[66], bytes[67], bytes[68], bytes[69], bytes[70], bytes[71],
         ]);
 
         let volume_length = u64::from_le_bytes([
-            bytes[72], bytes[73], bytes[74], bytes[75],
-            bytes[76], bytes[77], bytes[78], bytes[79],
+            bytes[72], bytes[73], bytes[74], bytes[75], bytes[76], bytes[77], bytes[78], bytes[79],
         ]);
 
         let fat_offset = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]);
@@ -204,10 +202,10 @@ impl EntryType {
 
     /// Check if entry is in use
     pub fn is_in_use(&self) -> bool {
-        match self {
-            EntryType::EndOfDirectory | EntryType::DeletedFile | EntryType::Unknown => false,
-            _ => true,
-        }
+        !matches!(
+            self,
+            EntryType::EndOfDirectory | EntryType::DeletedFile | EntryType::Unknown
+        )
     }
 }
 
@@ -312,7 +310,9 @@ impl FileDirectoryEntry {
             create_utc_offset: bytes[22],
             modify_utc_offset: bytes[23],
             access_utc_offset: bytes[24],
-            reserved2: [bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31]],
+            reserved2: [
+                bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31],
+            ],
         })
     }
 
@@ -373,14 +373,14 @@ impl StreamExtensionEntry {
             name_hash: u16::from_le_bytes([bytes[4], bytes[5]]),
             reserved2: u16::from_le_bytes([bytes[6], bytes[7]]),
             valid_data_length: u64::from_le_bytes([
-                bytes[8], bytes[9], bytes[10], bytes[11],
-                bytes[12], bytes[13], bytes[14], bytes[15],
+                bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14],
+                bytes[15],
             ]),
             reserved3: u32::from_le_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]),
             first_cluster: u32::from_le_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]),
             data_length: u64::from_le_bytes([
-                bytes[24], bytes[25], bytes[26], bytes[27],
-                bytes[28], bytes[29], bytes[30], bytes[31],
+                bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30],
+                bytes[31],
             ]),
         })
     }
@@ -436,10 +436,12 @@ impl FileNameEntry {
     /// Get file name as string
     pub fn file_name_string(&self) -> String {
         String::from_utf16_lossy(
-            &self.file_name.iter()
+            &self
+                .file_name
+                .iter()
                 .take_while(|&&c| c != 0)
                 .cloned()
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
         )
     }
 }
@@ -586,7 +588,8 @@ mod tests {
     fn test_timestamp_decode() {
         // Test timestamp: 2023-06-15 14:30:00
         let timestamp = (43 << 25) | (6 << 21) | (15 << 16) | (14 << 11) | (30 << 5);
-        let (year, month, day, hour, minute, second) = FileDirectoryEntry::decode_timestamp(timestamp);
+        let (year, month, day, hour, minute, second) =
+            FileDirectoryEntry::decode_timestamp(timestamp);
         assert_eq!(year, 2023);
         assert_eq!(month, 6);
         assert_eq!(day, 15);

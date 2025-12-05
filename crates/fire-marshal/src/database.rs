@@ -68,7 +68,7 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            ttl_seconds: 30 * 24 * 60 * 60, // 30 days
+            ttl_seconds: 30 * 24 * 60 * 60,    // 30 days
             max_size_bytes: 100 * 1024 * 1024, // 100 MB
         }
     }
@@ -106,13 +106,7 @@ impl PlatformDatabase {
     }
 
     /// Store a value in the cache
-    pub fn set<T: Serialize>(
-        &self,
-        key: &str,
-        value: &T,
-        tool: &str,
-        version: &str,
-    ) -> Result<()> {
+    pub fn set<T: Serialize>(&self, key: &str, value: &T, tool: &str, version: &str) -> Result<()> {
         let entry = CacheEntry::new(value, tool, version);
         let encoded = bincode::serialize(&entry)?;
 
@@ -241,10 +235,7 @@ impl PlatformDatabase {
                 .as_secs(),
         };
 
-        let key = format!(
-            "{}:{}:{}",
-            log_entry.timestamp, tool_name, method
-        );
+        let key = format!("{}:{}:{}", log_entry.timestamp, tool_name, method);
         let encoded = bincode::serialize(&log_entry)?;
 
         let db = self.db.lock().map_err(|_| {

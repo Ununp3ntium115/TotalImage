@@ -19,20 +19,26 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
+use totalimage_core::{validate_file_path, Result as TotalImageResult, ZoneTable};
+use totalimage_vaults::{open_vault, VaultConfig};
+use totalimage_zones::{GptZoneTable, MbrZoneTable};
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::timeout::TimeoutLayer;
-use totalimage_core::{validate_file_path, Result as TotalImageResult, ZoneTable};
-use totalimage_vaults::{open_vault, VaultConfig};
-use totalimage_zones::{GptZoneTable, MbrZoneTable};
 
 /// Shared application state
 #[derive(Clone)]
 struct AppState {
     cache: Arc<MetadataCache>,
     #[allow(dead_code)]
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+        >,
+    >,
 }
 
 #[tokio::main]
@@ -41,11 +47,10 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Initialize metadata cache
-    let cache_dir = std::env::var("TOTALIMAGE_CACHE_DIR")
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            format!("{}/.cache/totalimage", home)
-        });
+    let cache_dir = std::env::var("TOTALIMAGE_CACHE_DIR").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        format!("{}/.cache/totalimage", home)
+    });
     let cache_path = std::path::PathBuf::from(cache_dir).join("metadata.redb");
 
     let cache = match MetadataCache::new(cache_path.clone()) {
@@ -174,7 +179,10 @@ async fn vault_info(
     Query(params): Query<VaultQuery>,
 ) -> impl IntoResponse {
     // Check cache first
-    if let Ok(Some(cached_info)) = state.cache.get_vault_info::<VaultInfoResponse>(&params.path) {
+    if let Ok(Some(cached_info)) = state
+        .cache
+        .get_vault_info::<VaultInfoResponse>(&params.path)
+    {
         tracing::info!("Cache HIT for vault_info: {}", params.path);
         return (StatusCode::OK, Json(cached_info)).into_response();
     }

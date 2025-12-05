@@ -6,7 +6,7 @@
 use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::Path;
-use totalimage_core::{Result, Vault, ReadSeek};
+use totalimage_core::{ReadSeek, Result, Vault};
 use totalimage_pipeline::MmapPipeline;
 
 /// Configuration for opening a vault

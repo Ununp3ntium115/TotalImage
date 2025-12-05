@@ -228,7 +228,8 @@ impl E01Vault {
                 };
 
                 let current = chunk_table[i].offset;
-                chunk_table[i].compressed_size = (next_offset - current).min(u32::MAX as u64) as u32;
+                chunk_table[i].compressed_size =
+                    (next_offset - current).min(u32::MAX as u64) as u32;
             }
         }
 
@@ -329,7 +330,8 @@ impl E01Vault {
         let to_read = buf.len().min(available);
 
         if to_read > 0 {
-            buf[..to_read].copy_from_slice(&self.cache.cached_data[chunk_offset..chunk_offset + to_read]);
+            buf[..to_read]
+                .copy_from_slice(&self.cache.cached_data[chunk_offset..chunk_offset + to_read]);
         }
 
         Ok(to_read)
@@ -356,7 +358,8 @@ impl Vault for E01Vault {
 // Implement Read and Seek for E01Vault to support the Vault trait
 impl Read for E01Vault {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let bytes_read = self.read_at(self.cache.position, buf)
+        let bytes_read = self
+            .read_at(self.cache.position, buf)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
 
         self.cache.position += bytes_read as u64;
@@ -532,7 +535,10 @@ mod tests {
         // Verify enum variants exist and are different
         assert!(matches!(none, E01Compression::None));
         assert!(matches!(deflate, E01Compression::Deflate));
-        assert_ne!(std::mem::discriminant(&none), std::mem::discriminant(&deflate));
+        assert_ne!(
+            std::mem::discriminant(&none),
+            std::mem::discriminant(&deflate)
+        );
     }
 
     #[test]

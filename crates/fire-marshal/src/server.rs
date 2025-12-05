@@ -55,7 +55,13 @@ struct AppState {
     database: PlatformDatabase,
     transport: HttpTransport,
     #[allow(dead_code)]
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+        >,
+    >,
 }
 
 /// Fire Marshal server
@@ -68,10 +74,7 @@ impl FireMarshal {
     /// Create a new Fire Marshal instance
     pub fn new(config: FireMarshalConfig) -> Result<Self> {
         // Create database
-        let database = PlatformDatabase::new(
-            &config.database_path,
-            DatabaseConfig::default(),
-        )?;
+        let database = PlatformDatabase::new(&config.database_path, DatabaseConfig::default())?;
 
         // Create registry
         let registry = ToolRegistry::new();
@@ -87,7 +90,9 @@ impl FireMarshal {
         let transport = HttpTransport::new(config.timeout_secs);
 
         // Create rate limiter
-        let quota = Quota::per_second(NonZeroU32::new(config.rate_limit_rps).unwrap_or(NonZeroU32::new(100).unwrap()));
+        let quota = Quota::per_second(
+            NonZeroU32::new(config.rate_limit_rps).unwrap_or(NonZeroU32::new(100).unwrap()),
+        );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
         let state = Arc::new(AppState {
@@ -399,15 +404,13 @@ mod tests {
     #[test]
     fn test_list_tools_response_serialization() {
         let response = ListToolsResponse {
-            tools: vec![
-                ToolSummary {
-                    name: "test-tool".to_string(),
-                    version: "1.0.0".to_string(),
-                    description: "A test tool".to_string(),
-                    healthy: true,
-                    methods: vec!["method1".to_string(), "method2".to_string()],
-                },
-            ],
+            tools: vec![ToolSummary {
+                name: "test-tool".to_string(),
+                version: "1.0.0".to_string(),
+                description: "A test tool".to_string(),
+                healthy: true,
+                methods: vec!["method1".to_string(), "method2".to_string()],
+            }],
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -525,15 +528,13 @@ mod tests {
     #[test]
     fn test_tool_summary_unhealthy() {
         let response = ListToolsResponse {
-            tools: vec![
-                ToolSummary {
-                    name: "failing-tool".to_string(),
-                    version: "0.1.0".to_string(),
-                    description: "Tool that is unhealthy".to_string(),
-                    healthy: false,
-                    methods: vec![],
-                },
-            ],
+            tools: vec![ToolSummary {
+                name: "failing-tool".to_string(),
+                version: "0.1.0".to_string(),
+                description: "Tool that is unhealthy".to_string(),
+                healthy: false,
+                methods: vec![],
+            }],
         };
 
         let json = serde_json::to_string(&response).unwrap();

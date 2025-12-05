@@ -2,8 +2,8 @@
 //!
 //! Supports ISO-9660 standard with Rock Ridge extensions for POSIX features
 
-pub mod types;
 pub mod rockridge;
+pub mod types;
 
 use std::io::SeekFrom;
 use totalimage_core::{DirectoryCell, Error, OccupantInfo, ReadSeek, Result, Territory};
@@ -58,11 +58,12 @@ impl IsoTerritory {
             // Parse based on type
             match VolumeDescriptorType::from_u8(descriptor_type) {
                 Some(VolumeDescriptorType::PrimaryVolumeDescriptor) => {
-                    primary_descriptor = Some(
-                        PrimaryVolumeDescriptor::from_bytes(&sector).ok_or_else(|| {
-                            Error::invalid_territory("Failed to parse primary volume descriptor".to_string())
-                        })?,
-                    );
+                    primary_descriptor =
+                        Some(PrimaryVolumeDescriptor::from_bytes(&sector).ok_or_else(|| {
+                            Error::invalid_territory(
+                                "Failed to parse primary volume descriptor".to_string(),
+                            )
+                        })?);
                 }
                 Some(VolumeDescriptorType::VolumeDescriptorSetTerminator) => {
                     // End of volume descriptor set
@@ -83,8 +84,9 @@ impl IsoTerritory {
         }
 
         // Must have a primary volume descriptor
-        let primary = primary_descriptor
-            .ok_or_else(|| Error::invalid_territory("No primary volume descriptor found".to_string()))?;
+        let primary = primary_descriptor.ok_or_else(|| {
+            Error::invalid_territory("No primary volume descriptor found".to_string())
+        })?;
 
         // Get root directory record from primary descriptor
         let root_directory = primary.root_directory_record.clone();
@@ -160,13 +162,11 @@ impl IsoTerritory {
     }
 
     /// Read file data from a file record
-    pub fn read_file(
-        &self,
-        stream: &mut dyn ReadSeek,
-        file: &DirectoryRecord,
-    ) -> Result<Vec<u8>> {
+    pub fn read_file(&self, stream: &mut dyn ReadSeek, file: &DirectoryRecord) -> Result<Vec<u8>> {
         if file.is_directory() {
-            return Err(Error::invalid_territory("Cannot read directory as file".to_string()));
+            return Err(Error::invalid_territory(
+                "Cannot read directory as file".to_string(),
+            ));
         }
 
         let extent_lba = file.extent_location.get();
@@ -386,7 +386,10 @@ mod tests {
         let territory = IsoTerritory::parse(&mut cursor).unwrap();
 
         assert_eq!(territory.identify(), "ISO-9660 filesystem");
-        assert_eq!(territory.primary_descriptor().logical_block_size.get(), 2048);
+        assert_eq!(
+            territory.primary_descriptor().logical_block_size.get(),
+            2048
+        );
         assert_eq!(territory.primary_descriptor().volume_space_size.get(), 32);
     }
 

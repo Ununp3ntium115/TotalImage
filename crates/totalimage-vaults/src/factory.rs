@@ -155,7 +155,11 @@ pub fn open_vault(path: &Path, config: VaultConfig) -> Result<Box<dyn Vault>> {
 /// Open a vault with a specific type (skip auto-detection)
 ///
 /// Use this when you know the vault type or want to force a specific handler.
-pub fn open_vault_as(path: &Path, vault_type: VaultType, config: VaultConfig) -> Result<Box<dyn Vault>> {
+pub fn open_vault_as(
+    path: &Path,
+    vault_type: VaultType,
+    config: VaultConfig,
+) -> Result<Box<dyn Vault>> {
     match vault_type {
         VaultType::Raw => {
             let vault = RawVault::open(path, config)?;
@@ -184,7 +188,10 @@ pub fn open_vault_as(path: &Path, vault_type: VaultType, config: VaultConfig) ->
 /// Get information about supported vault types
 pub fn supported_formats() -> Vec<(&'static str, &'static [&'static str])> {
     vec![
-        ("Raw Sector Image", &["img", "ima", "flp", "vfd", "dsk", "iso", "bin", "raw", "dd"]),
+        (
+            "Raw Sector Image",
+            &["img", "ima", "flp", "vfd", "dsk", "iso", "bin", "raw", "dd"],
+        ),
         ("Microsoft VHD", &["vhd"]),
         ("EnCase E01", &["e01", "ex01", "s01", "l01"]),
         ("AFF4 Container", &["aff4", "af4"]),

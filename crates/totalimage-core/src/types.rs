@@ -159,10 +159,7 @@ impl fmt::Display for Zone {
         write!(
             f,
             "Zone {} [{} @ 0x{:08X}, {} bytes]",
-            self.index,
-            self.zone_type,
-            self.offset,
-            self.length
+            self.index, self.zone_type, self.offset, self.length
         )?;
         if let Some(ref territory) = self.territory_type {
             write!(f, " -> {}", territory)?;

@@ -236,7 +236,8 @@ impl VhdVault {
         }
 
         // Seek to the locator data
-        self.pipeline.seek(SeekFrom::Start(locator.platform_data_offset))?;
+        self.pipeline
+            .seek(SeekFrom::Start(locator.platform_data_offset))?;
 
         let mut data = vec![0u8; locator.platform_data_length as usize];
         self.pipeline.read_exact(&mut data)?;
@@ -409,7 +410,12 @@ impl VhdChainVault {
     }
 
     /// Read data from a specific VHD at a given offset
-    fn read_from_chain(&mut self, chain_index: usize, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
+    fn read_from_chain(
+        &mut self,
+        chain_index: usize,
+        offset: u64,
+        buf: &mut [u8],
+    ) -> io::Result<usize> {
         if chain_index >= self.chain.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -577,7 +583,9 @@ impl<R: Read + Seek> Read for VhdDynamicPipeline<R> {
                 let physical_pos = physical_offset + bitmap_size + block_offset;
 
                 self.base.seek(SeekFrom::Start(physical_pos))?;
-                let bytes_read = self.base.read(&mut buf[total_read..total_read + chunk_size])?;
+                let bytes_read = self
+                    .base
+                    .read(&mut buf[total_read..total_read + chunk_size])?;
 
                 if bytes_read == 0 {
                     break; // Unexpected EOF
@@ -836,7 +844,11 @@ mod tests {
     }
 
     /// Create a synthetic dynamic VHD for testing
-    fn create_test_dynamic_vhd(virtual_size: u64, block_size: u32, allocated_blocks: &[usize]) -> Vec<u8> {
+    fn create_test_dynamic_vhd(
+        virtual_size: u64,
+        block_size: u32,
+        allocated_blocks: &[usize],
+    ) -> Vec<u8> {
         let mut vhd = Vec::new();
 
         // Calculate number of blocks needed
@@ -995,7 +1007,10 @@ mod tests {
         let mut vault = VhdVault::open(tmpfile.path(), VaultConfig::default()).unwrap();
 
         // Read from sparse block 1 (should return zeros)
-        vault.content().seek(SeekFrom::Start(block_size as u64)).unwrap();
+        vault
+            .content()
+            .seek(SeekFrom::Start(block_size as u64))
+            .unwrap();
         let mut buf = [0u8; 100];
         vault.content().read(&mut buf).unwrap();
 

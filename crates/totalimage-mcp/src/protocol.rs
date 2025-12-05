@@ -23,10 +23,7 @@ pub enum MCPRequest {
 
     /// List available tools
     #[serde(rename = "tools/list")]
-    ListTools {
-        jsonrpc: String,
-        id: RequestId,
-    },
+    ListTools { jsonrpc: String, id: RequestId },
 
     /// Call a specific tool
     #[serde(rename = "tools/call")]
@@ -355,10 +352,7 @@ mod tests {
 
     #[test]
     fn test_mcp_response_success() {
-        let response = MCPResponse::success(
-            RequestId::Number(1),
-            json!({"result": "ok"}),
-        );
+        let response = MCPResponse::success(RequestId::Number(1), json!({"result": "ok"}));
 
         assert_eq!(response.jsonrpc, "2.0");
         assert!(response.result.is_some());

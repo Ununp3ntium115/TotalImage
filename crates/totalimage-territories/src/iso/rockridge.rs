@@ -286,7 +286,8 @@ fn parse_tf_entry(data: &[u8]) -> Option<RockRidgeTimestamps> {
         pos += timestamp_size;
     }
     if _attributes && pos + timestamp_size <= data.len() {
-        timestamps.attribute_change = parse_iso_timestamp(&data[pos..pos + timestamp_size], long_form);
+        timestamps.attribute_change =
+            parse_iso_timestamp(&data[pos..pos + timestamp_size], long_form);
     }
 
     Some(timestamps)
@@ -337,10 +338,22 @@ mod tests {
 
     #[test]
     fn test_signature_parsing() {
-        assert_eq!(RockRidgeSignature::from_bytes(b"SP"), Some(RockRidgeSignature::SP));
-        assert_eq!(RockRidgeSignature::from_bytes(b"NM"), Some(RockRidgeSignature::NM));
-        assert_eq!(RockRidgeSignature::from_bytes(b"PX"), Some(RockRidgeSignature::PX));
-        assert_eq!(RockRidgeSignature::from_bytes(b"TF"), Some(RockRidgeSignature::TF));
+        assert_eq!(
+            RockRidgeSignature::from_bytes(b"SP"),
+            Some(RockRidgeSignature::SP)
+        );
+        assert_eq!(
+            RockRidgeSignature::from_bytes(b"NM"),
+            Some(RockRidgeSignature::NM)
+        );
+        assert_eq!(
+            RockRidgeSignature::from_bytes(b"PX"),
+            Some(RockRidgeSignature::PX)
+        );
+        assert_eq!(
+            RockRidgeSignature::from_bytes(b"TF"),
+            Some(RockRidgeSignature::TF)
+        );
         assert_eq!(RockRidgeSignature::from_bytes(b"XX"), None);
     }
 

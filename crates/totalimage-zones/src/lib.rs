@@ -24,8 +24,8 @@
 //! }
 //! ```
 
-pub mod mbr;
 pub mod gpt;
+pub mod mbr;
 
-pub use mbr::MbrZoneTable;
 pub use gpt::GptZoneTable;
+pub use mbr::MbrZoneTable;

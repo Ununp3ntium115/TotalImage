@@ -176,8 +176,7 @@ impl Aff4BevyIndexEntry {
         }
 
         let offset = u64::from_le_bytes([
-            bytes[0], bytes[1], bytes[2], bytes[3],
-            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]);
         let length = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
 
@@ -229,7 +228,10 @@ impl TurtleParser {
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() >= 3 {
             let prefix = parts[1].trim_end_matches(':').to_string();
-            let uri = parts[2].trim_start_matches('<').trim_end_matches('>').to_string();
+            let uri = parts[2]
+                .trim_start_matches('<')
+                .trim_end_matches('>')
+                .to_string();
             return Some((prefix, uri));
         }
         None
@@ -362,9 +364,7 @@ mod tests {
 
     #[test]
     fn test_turtle_expand_uri() {
-        let prefixes = vec![
-            ("aff4".to_string(), "http://aff4.org/Schema#".to_string()),
-        ];
+        let prefixes = vec![("aff4".to_string(), "http://aff4.org/Schema#".to_string())];
 
         let expanded = TurtleParser::expand_uri("aff4:ImageStream", &prefixes);
         assert_eq!(expanded, "http://aff4.org/Schema#ImageStream");

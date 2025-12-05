@@ -56,20 +56,48 @@ impl NtfsFileAttribute {
     pub fn from_u32(value: u32) -> Vec<Self> {
         let mut attrs = Vec::new();
 
-        if value & 0x0001 != 0 { attrs.push(Self::ReadOnly); }
-        if value & 0x0002 != 0 { attrs.push(Self::Hidden); }
-        if value & 0x0004 != 0 { attrs.push(Self::System); }
-        if value & 0x0010 != 0 { attrs.push(Self::Directory); }
-        if value & 0x0020 != 0 { attrs.push(Self::Archive); }
-        if value & 0x0040 != 0 { attrs.push(Self::Device); }
-        if value & 0x0080 != 0 { attrs.push(Self::Normal); }
-        if value & 0x0100 != 0 { attrs.push(Self::Temporary); }
-        if value & 0x0200 != 0 { attrs.push(Self::SparseFile); }
-        if value & 0x0400 != 0 { attrs.push(Self::ReparsePoint); }
-        if value & 0x0800 != 0 { attrs.push(Self::Compressed); }
-        if value & 0x1000 != 0 { attrs.push(Self::Offline); }
-        if value & 0x2000 != 0 { attrs.push(Self::NotContentIndexed); }
-        if value & 0x4000 != 0 { attrs.push(Self::Encrypted); }
+        if value & 0x0001 != 0 {
+            attrs.push(Self::ReadOnly);
+        }
+        if value & 0x0002 != 0 {
+            attrs.push(Self::Hidden);
+        }
+        if value & 0x0004 != 0 {
+            attrs.push(Self::System);
+        }
+        if value & 0x0010 != 0 {
+            attrs.push(Self::Directory);
+        }
+        if value & 0x0020 != 0 {
+            attrs.push(Self::Archive);
+        }
+        if value & 0x0040 != 0 {
+            attrs.push(Self::Device);
+        }
+        if value & 0x0080 != 0 {
+            attrs.push(Self::Normal);
+        }
+        if value & 0x0100 != 0 {
+            attrs.push(Self::Temporary);
+        }
+        if value & 0x0200 != 0 {
+            attrs.push(Self::SparseFile);
+        }
+        if value & 0x0400 != 0 {
+            attrs.push(Self::ReparsePoint);
+        }
+        if value & 0x0800 != 0 {
+            attrs.push(Self::Compressed);
+        }
+        if value & 0x1000 != 0 {
+            attrs.push(Self::Offline);
+        }
+        if value & 0x2000 != 0 {
+            attrs.push(Self::NotContentIndexed);
+        }
+        if value & 0x4000 != 0 {
+            attrs.push(Self::Encrypted);
+        }
 
         attrs
     }

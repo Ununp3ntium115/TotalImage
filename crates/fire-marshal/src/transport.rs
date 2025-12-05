@@ -102,11 +102,7 @@ impl HttpTransport {
         let url = format!("{}/tools/call", base_url);
 
         // Build request
-        let mut req = self
-            .client
-            .post(&url)
-            .json(request)
-            .timeout(self.timeout);
+        let mut req = self.client.post(&url).json(request).timeout(self.timeout);
 
         // Add authentication if configured
         if let Some(auth_config) = auth {
@@ -119,9 +115,10 @@ impl HttpTransport {
         }
 
         // Send request
-        let response = req.send().await.map_err(|e| {
-            Error::Http(format!("Request failed: {}", e))
-        })?;
+        let response = req
+            .send()
+            .await
+            .map_err(|e| Error::Http(format!("Request failed: {}", e)))?;
 
         // Check status
         if !response.status().is_success() {
@@ -134,9 +131,10 @@ impl HttpTransport {
         }
 
         // Parse response
-        let result: Value = response.json().await.map_err(|e| {
-            Error::Http(format!("Failed to parse response: {}", e))
-        })?;
+        let result: Value = response
+            .json()
+            .await
+            .map_err(|e| Error::Http(format!("Failed to parse response: {}", e)))?;
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -152,7 +150,13 @@ impl HttpTransport {
 
         let url = format!("{}/health", base_url);
 
-        match self.client.get(&url).timeout(Duration::from_secs(5)).send().await {
+        match self
+            .client
+            .get(&url)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+        {
             Ok(response) => Ok(response.status().is_success()),
             Err(_) => Ok(false),
         }

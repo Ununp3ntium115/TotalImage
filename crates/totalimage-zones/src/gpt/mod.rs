@@ -53,14 +53,13 @@ impl GptZoneTable {
         let mut header_bytes = vec![0u8; sector_size as usize];
         stream.read_exact(&mut header_bytes)?;
 
-        let header = GptHeader::from_bytes(&header_bytes).ok_or_else(|| {
-            Error::invalid_zone_table("Invalid GPT header signature".to_string())
-        })?;
+        let header = GptHeader::from_bytes(&header_bytes)
+            .ok_or_else(|| Error::invalid_zone_table("Invalid GPT header signature".to_string()))?;
 
         // Verify header CRC32 (SEC-006: Checksum enforcement)
         if !header.verify_header_crc32(&header_bytes) {
             return Err(Error::ChecksumVerification(
-                "GPT header CRC32 verification failed".to_string()
+                "GPT header CRC32 verification failed".to_string(),
             ));
         }
 
@@ -80,7 +79,7 @@ impl GptZoneTable {
         // Verify partition entries CRC32 (SEC-006: Checksum enforcement)
         if !header.verify_partition_entries_crc32(&all_entries_bytes) {
             return Err(Error::ChecksumVerification(
-                "GPT partition entries CRC32 verification failed".to_string()
+                "GPT partition entries CRC32 verification failed".to_string(),
             ));
         }
 
@@ -191,8 +190,10 @@ mod tests {
         disk[header_offset + 48..header_offset + 56].copy_from_slice(&966u64.to_le_bytes());
 
         // Disk GUID
-        let disk_guid = [0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
-                         0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
+        let disk_guid = [
+            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
+            0xde, 0xf0,
+        ];
         disk[header_offset + 56..header_offset + 72].copy_from_slice(&disk_guid);
 
         // Partition entries LBA (2)
@@ -215,14 +216,14 @@ mod tests {
 
         // Partition type GUID: Linux filesystem
         disk[entry_offset..entry_offset + 16].copy_from_slice(&[
-            0xaf, 0x3d, 0xc6, 0x0f, 0x83, 0x84, 0x72, 0x47,
-            0x8e, 0x79, 0x3d, 0x69, 0xd8, 0x47, 0x7d, 0xe4,
+            0xaf, 0x3d, 0xc6, 0x0f, 0x83, 0x84, 0x72, 0x47, 0x8e, 0x79, 0x3d, 0x69, 0xd8, 0x47,
+            0x7d, 0xe4,
         ]);
 
         // Unique partition GUID (random)
         disk[entry_offset + 16..entry_offset + 32].copy_from_slice(&[
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-            0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10,
         ]);
 
         // First LBA (100)
@@ -331,8 +332,10 @@ mod tests {
         let mut cursor = Cursor::new(gpt_data);
 
         let table = GptZoneTable::parse(&mut cursor, 512).unwrap();
-        let expected_guid = [0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0,
-                            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
+        let expected_guid = [
+            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
+            0xde, 0xf0,
+        ];
 
         assert_eq!(table.disk_guid(), &expected_guid);
     }
@@ -376,9 +379,6 @@ mod tests {
         // GPT header is exactly 92 bytes (rest of 512-byte sector is reserved)
         const GPT_HEADER_SIZE: usize = 92;
         assert_eq!(GPT_HEADER_SIZE, 92);
-
-        // Header fits in one sector
-        assert!(GPT_HEADER_SIZE < 512);
     }
 
     #[test]

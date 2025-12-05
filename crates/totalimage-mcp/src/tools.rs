@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use totalimage_core::{validate_file_path, Zone, Territory, ZoneTable};
+use totalimage_core::{validate_file_path, Territory, Zone, ZoneTable};
 use totalimage_pipeline::PartialPipeline;
 use totalimage_territories::{FatTerritory, IsoTerritory};
 use totalimage_vaults::{open_vault, VaultConfig};
@@ -231,12 +231,11 @@ impl Tool for AnalyzeDiskImageTool {
         tracing::info!("Cache MISS for analyze_disk_image: {}", input.path);
 
         // Validate path
-        let path = validate_file_path(&input.path)
-            .context("Invalid file path")?;
+        let path = validate_file_path(&input.path).context("Invalid file path")?;
 
         // Analyze vault
-        let mut vault = open_vault(&path, VaultConfig::default())
-            .context("Failed to open vault")?;
+        let mut vault =
+            open_vault(&path, VaultConfig::default()).context("Failed to open vault")?;
 
         let vault_info = VaultInfo {
             path: input.path.clone(),
@@ -304,7 +303,9 @@ impl Tool for AnalyzeDiskImageTool {
         if input.deep_scan {
             for (idx, zone) in zones.iter().enumerate() {
                 // Create partial pipeline for this zone
-                if let Ok(mut partial) = PartialPipeline::new(vault.content(), zone.offset, zone.length) {
+                if let Ok(mut partial) =
+                    PartialPipeline::new(vault.content(), zone.offset, zone.length)
+                {
                     // Try FAT
                     if let Ok(fat) = FatTerritory::parse(&mut partial) {
                         let label = fat.banner().ok();
@@ -591,7 +592,10 @@ impl Tool for ListFilesTool {
                 })
                 .collect()
         } else {
-            return Err(anyhow::anyhow!("Unable to read filesystem at zone {}", input.zone_index));
+            return Err(anyhow::anyhow!(
+                "Unable to read filesystem at zone {}",
+                input.zone_index
+            ));
         };
 
         let output = ListFilesOutput { files };
@@ -717,9 +721,14 @@ impl Tool for ExtractFileTool {
             // NOTE: ISO file extraction via DirectoryCell not supported
             // IsoTerritory::read_file() exists but DirectoryCell trait design prevents its use.
             // Could be implemented by refactoring to pass stream through DirectoryCell methods.
-            return Err(anyhow::anyhow!("ISO file extraction not yet implemented via MCP tool"));
+            return Err(anyhow::anyhow!(
+                "ISO file extraction not yet implemented via MCP tool"
+            ));
         } else {
-            return Err(anyhow::anyhow!("Unable to read filesystem at zone {}", input.zone_index));
+            return Err(anyhow::anyhow!(
+                "Unable to read filesystem at zone {}",
+                input.zone_index
+            ));
         };
 
         let output = ExtractFileOutput {
@@ -936,13 +945,11 @@ mod tests {
         let analysis = SecurityAnalysis {
             boot_sector_valid: true,
             partition_table_valid: true,
-            checksum_results: vec![
-                ChecksumResult {
-                    component: "MBR".to_string(),
-                    valid: true,
-                    details: Some("Valid signature".to_string()),
-                }
-            ],
+            checksum_results: vec![ChecksumResult {
+                component: "MBR".to_string(),
+                valid: true,
+                details: Some("Valid signature".to_string()),
+            }],
         };
 
         let json = serde_json::to_string(&analysis).unwrap();
@@ -996,13 +1003,11 @@ mod tests {
     fn test_validate_integrity_output() {
         let output = ValidateIntegrityOutput {
             valid: false,
-            issues: vec![
-                IntegrityIssue {
-                    severity: "warning".to_string(),
-                    component: "Boot Sector".to_string(),
-                    message: "Invalid signature".to_string(),
-                }
-            ],
+            issues: vec![IntegrityIssue {
+                severity: "warning".to_string(),
+                component: "Boot Sector".to_string(),
+                message: "Invalid signature".to_string(),
+            }],
         };
 
         let json = serde_json::to_string(&output).unwrap();
@@ -1028,8 +1033,16 @@ mod tests {
     fn test_list_files_output() {
         let output = ListFilesOutput {
             files: vec![
-                FileInfo { name: "file1.txt".to_string(), size: 100, is_directory: false },
-                FileInfo { name: "dir1".to_string(), size: 0, is_directory: true },
+                FileInfo {
+                    name: "file1.txt".to_string(),
+                    size: 100,
+                    is_directory: false,
+                },
+                FileInfo {
+                    name: "dir1".to_string(),
+                    size: 0,
+                    is_directory: true,
+                },
             ],
         };
 
@@ -1042,9 +1055,12 @@ mod tests {
     fn test_list_partitions_output() {
         let output = ListPartitionsOutput {
             partition_table: "GPT".to_string(),
-            zones: vec![
-                ZoneInfo { index: 0, offset: 1048576, length: 100000000, zone_type: "EFI".to_string() },
-            ],
+            zones: vec![ZoneInfo {
+                index: 0,
+                offset: 1048576,
+                length: 100000000,
+                zone_type: "EFI".to_string(),
+            }],
         };
 
         let json = serde_json::to_string(&output).unwrap();
@@ -1129,7 +1145,10 @@ mod tests {
 
         let schema = tool.input_schema();
         assert!(schema["properties"]["path"].is_object());
-        assert!(schema["required"].as_array().unwrap().contains(&json!("path")));
+        assert!(schema["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("path")));
     }
 
     #[test]
@@ -1169,10 +1188,14 @@ mod tests {
     fn test_tool_enum_names() {
         let cache = create_test_cache();
 
-        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache: cache.clone() });
+        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool {
+            cache: cache.clone(),
+        });
         assert_eq!(analyze.name(), "analyze_disk_image");
 
-        let list_partitions = ToolEnum::ListPartitions(ListPartitionsTool { cache: cache.clone() });
+        let list_partitions = ToolEnum::ListPartitions(ListPartitionsTool {
+            cache: cache.clone(),
+        });
         assert_eq!(list_partitions.name(), "list_partitions");
 
         let list_files = ToolEnum::ListFiles(ListFilesTool { cache });
