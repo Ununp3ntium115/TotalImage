@@ -1,0 +1,59 @@
+---
+# ServiceMonitor for Prometheus Operator
+# Enables automatic metrics scraping by Prometheus
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: totalimage-web
+  labels:
+    app: totalimage
+    component: web
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: totalimage
+      component: web
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: totalimage-mcp
+  labels:
+    app: totalimage
+    component: mcp
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: totalimage
+      component: mcp
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fire-marshal
+  labels:
+    app: totalimage
+    component: fire-marshal
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app: totalimage
+      component: fire-marshal
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
