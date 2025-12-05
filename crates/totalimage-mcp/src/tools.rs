@@ -9,14 +9,14 @@
 
 use crate::cache::ToolCache;
 use crate::protocol::{ToolDefinition, ToolResult};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use totalimage_core::{validate_file_path, Territory, Zone, ZoneTable};
+use totalimage_core::{validate_file_path, Zone, Territory, ZoneTable};
 use totalimage_pipeline::PartialPipeline;
 use totalimage_territories::{FatTerritory, IsoTerritory};
 use totalimage_vaults::{open_vault, VaultConfig};
@@ -36,6 +36,12 @@ pub trait Tool: Send + Sync {
 
     /// Execute the tool with given arguments
     async fn execute(&self, args: Option<Value>) -> Result<ToolResult>;
+
+    /// Whether tool results should be cached
+    /// Default: true for read-only tools, false for tools that modify state
+    fn is_cacheable(&self) -> bool {
+        true
+    }
 
     /// Get tool definition for tools/list response
     fn definition(&self) -> ToolDefinition {
@@ -114,6 +120,22 @@ impl ToolEnum {
             ToolEnum::ValidateIntegrity(t) => t.definition(),
         }
     }
+
+    pub fn is_cacheable(&self) -> bool {
+        match self {
+            // Read-only analysis tools are cacheable
+            ToolEnum::AnalyzeDiskImage(_) => true,
+            ToolEnum::ListPartitions(_) => true,
+            ToolEnum::ListFiles(_) => true,
+            ToolEnum::ValidateIntegrity(_) => true,
+            // ExtractFile creates output files, so not cacheable
+            ToolEnum::ExtractFile(_) => false,
+        }
+    }
+}
+
+fn sandbox_host_path(path: &str, allowed_roots: &[PathBuf]) -> Result<PathBuf> {
+    validate_file_path(path, allowed_roots).map_err(|e| anyhow!(e.to_string()))
 }
 
 // ============================================================================
@@ -122,6 +144,7 @@ impl ToolEnum {
 
 pub struct AnalyzeDiskImageTool {
     pub cache: Arc<ToolCache>,
+    pub allowed_roots: Arc<Vec<PathBuf>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -231,11 +254,12 @@ impl Tool for AnalyzeDiskImageTool {
         tracing::info!("Cache MISS for analyze_disk_image: {}", input.path);
 
         // Validate path
-        let path = validate_file_path(&input.path).context("Invalid file path")?;
+        let path = sandbox_host_path(&input.path, &self.allowed_roots)
+            .context("Invalid file path")?;
 
         // Analyze vault
-        let mut vault =
-            open_vault(&path, VaultConfig::default()).context("Failed to open vault")?;
+        let mut vault = open_vault(&path, VaultConfig::default())
+            .context("Failed to open vault")?;
 
         let vault_info = VaultInfo {
             path: input.path.clone(),
@@ -303,9 +327,7 @@ impl Tool for AnalyzeDiskImageTool {
         if input.deep_scan {
             for (idx, zone) in zones.iter().enumerate() {
                 // Create partial pipeline for this zone
-                if let Ok(mut partial) =
-                    PartialPipeline::new(vault.content(), zone.offset, zone.length)
-                {
+                if let Ok(mut partial) = PartialPipeline::new(vault.content(), zone.offset, zone.length) {
                     // Try FAT
                     if let Ok(fat) = FatTerritory::parse(&mut partial) {
                         let label = fat.banner().ok();
@@ -354,6 +376,7 @@ impl Tool for AnalyzeDiskImageTool {
 
 pub struct ListPartitionsTool {
     pub cache: Arc<ToolCache>,
+    pub allowed_roots: Arc<Vec<PathBuf>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -410,7 +433,7 @@ impl Tool for ListPartitionsTool {
         }
 
         // Validate path
-        let path = validate_file_path(&input.path)?;
+        let path = sandbox_host_path(&input.path, &self.allowed_roots)?;
 
         // Open vault
         let mut vault = open_vault(&path, VaultConfig::default())?;
@@ -466,6 +489,7 @@ impl Tool for ListPartitionsTool {
 
 pub struct ListFilesTool {
     pub cache: Arc<ToolCache>,
+    pub allowed_roots: Arc<Vec<PathBuf>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -535,7 +559,7 @@ impl Tool for ListFilesTool {
         }
 
         // Validate path
-        let path = validate_file_path(&input.path)?;
+        let path = sandbox_host_path(&input.path, &self.allowed_roots)?;
 
         // Open vault and get zone
         let mut vault = open_vault(&path, VaultConfig::default())?;
@@ -592,10 +616,7 @@ impl Tool for ListFilesTool {
                 })
                 .collect()
         } else {
-            return Err(anyhow::anyhow!(
-                "Unable to read filesystem at zone {}",
-                input.zone_index
-            ));
+            return Err(anyhow::anyhow!("Unable to read filesystem at zone {}", input.zone_index));
         };
 
         let output = ListFilesOutput { files };
@@ -613,7 +634,9 @@ impl Tool for ListFilesTool {
 // Tool 4: Extract File
 // ============================================================================
 
-pub struct ExtractFileTool {}
+pub struct ExtractFileTool {
+    pub allowed_roots: Arc<Vec<PathBuf>>,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ExtractFileInput {
@@ -672,7 +695,7 @@ impl Tool for ExtractFileTool {
             .context("Invalid arguments for extract_file")?;
 
         // Validate paths
-        let image_path = validate_file_path(&input.image_path)?;
+        let image_path = sandbox_host_path(&input.image_path, &self.allowed_roots)?;
         let output_path = PathBuf::from(&input.output_path);
 
         // Open vault
@@ -717,18 +740,72 @@ impl Tool for ExtractFileTool {
             file.write_all(&data)?;
 
             data.len() as u64
-        } else if let Ok(_iso) = IsoTerritory::parse(&mut partial) {
-            // NOTE: ISO file extraction via DirectoryCell not supported
-            // IsoTerritory::read_file() exists but DirectoryCell trait design prevents its use.
-            // Could be implemented by refactoring to pass stream through DirectoryCell methods.
-            return Err(anyhow::anyhow!(
-                "ISO file extraction not yet implemented via MCP tool"
-            ));
+        } else if let Ok(iso) = IsoTerritory::parse(&mut partial) {
+            // Get root directory from the ISO territory
+            let root = iso.primary_descriptor().root_directory_record.clone();
+
+            // Parse the file path - handle both root files and nested paths
+            let path_parts: Vec<&str> = input.file_path
+                .trim_start_matches('/')
+                .split('/')
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            if path_parts.is_empty() {
+                return Err(anyhow::anyhow!("Empty file path"));
+            }
+
+            // Navigate to the target file through directories
+            let mut current_dir = root;
+            for (i, part) in path_parts.iter().enumerate() {
+                let is_last = i == path_parts.len() - 1;
+
+                // Read entries in current directory
+                let entries = iso.read_directory(&mut partial, &current_dir)
+                    .context("Failed to read ISO directory")?;
+
+                // Find matching entry (case-insensitive for ISO compatibility)
+                let target_name = part.to_uppercase();
+                let entry = entries
+                    .into_iter()
+                    .find(|e| {
+                        let name = e.file_name().to_uppercase();
+                        // Handle ISO file naming (;1 version suffix)
+                        let base_name = name.split(';').next().unwrap_or(&name);
+                        base_name == target_name || name == target_name
+                    })
+                    .ok_or_else(|| anyhow::anyhow!("File not found in ISO: {}", part))?;
+
+                if is_last {
+                    // This is the target file - read its data
+                    if entry.is_directory() {
+                        return Err(anyhow::anyhow!("Path is a directory, not a file: {}", part));
+                    }
+
+                    let data = iso.read_file(&mut partial, &entry)
+                        .context("Failed to read file from ISO")?;
+
+                    // Write to output file
+                    let mut file = std::fs::File::create(&output_path)?;
+                    file.write_all(&data)?;
+
+                    return Ok(ToolResult::from_value(serde_json::to_value(&ExtractFileOutput {
+                        success: true,
+                        bytes_extracted: data.len() as u64,
+                        output_path: input.output_path,
+                    })?));
+                } else {
+                    // This is an intermediate directory - navigate into it
+                    if !entry.is_directory() {
+                        return Err(anyhow::anyhow!("Path component is not a directory: {}", part));
+                    }
+                    current_dir = entry;
+                }
+            }
+
+            return Err(anyhow::anyhow!("Failed to navigate to file"));
         } else {
-            return Err(anyhow::anyhow!(
-                "Unable to read filesystem at zone {}",
-                input.zone_index
-            ));
+            return Err(anyhow::anyhow!("Unable to read filesystem at zone {}", input.zone_index));
         };
 
         let output = ExtractFileOutput {
@@ -745,7 +822,9 @@ impl Tool for ExtractFileTool {
 // Tool 5: Validate Integrity
 // ============================================================================
 
-pub struct ValidateIntegrityTool {}
+pub struct ValidateIntegrityTool {
+    pub allowed_roots: Arc<Vec<PathBuf>>,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ValidateIntegrityInput {
@@ -807,7 +886,7 @@ impl Tool for ValidateIntegrityTool {
             .context("Invalid arguments for validate_integrity")?;
 
         // Validate path
-        let path = validate_file_path(&input.path)?;
+        let path = sandbox_host_path(&input.path, &self.allowed_roots)?;
 
         // Open vault
         let mut vault = open_vault(&path, VaultConfig::default())?;
@@ -851,6 +930,12 @@ mod tests {
         // Leak the tempdir so it lives for the duration of the test
         std::mem::forget(temp_dir);
         Arc::new(ToolCache::new(cache_path, "test_tool", "1.0.0").unwrap())
+    }
+
+    fn test_allowed_roots() -> Arc<Vec<PathBuf>> {
+        let cwd = std::env::current_dir().unwrap();
+        let canonical = cwd.canonicalize().unwrap_or(cwd);
+        Arc::new(vec![canonical])
     }
 
     // =========================================================================
@@ -945,11 +1030,13 @@ mod tests {
         let analysis = SecurityAnalysis {
             boot_sector_valid: true,
             partition_table_valid: true,
-            checksum_results: vec![ChecksumResult {
-                component: "MBR".to_string(),
-                valid: true,
-                details: Some("Valid signature".to_string()),
-            }],
+            checksum_results: vec![
+                ChecksumResult {
+                    component: "MBR".to_string(),
+                    valid: true,
+                    details: Some("Valid signature".to_string()),
+                }
+            ],
         };
 
         let json = serde_json::to_string(&analysis).unwrap();
@@ -1003,11 +1090,13 @@ mod tests {
     fn test_validate_integrity_output() {
         let output = ValidateIntegrityOutput {
             valid: false,
-            issues: vec![IntegrityIssue {
-                severity: "warning".to_string(),
-                component: "Boot Sector".to_string(),
-                message: "Invalid signature".to_string(),
-            }],
+            issues: vec![
+                IntegrityIssue {
+                    severity: "warning".to_string(),
+                    component: "Boot Sector".to_string(),
+                    message: "Invalid signature".to_string(),
+                }
+            ],
         };
 
         let json = serde_json::to_string(&output).unwrap();
@@ -1033,16 +1122,8 @@ mod tests {
     fn test_list_files_output() {
         let output = ListFilesOutput {
             files: vec![
-                FileInfo {
-                    name: "file1.txt".to_string(),
-                    size: 100,
-                    is_directory: false,
-                },
-                FileInfo {
-                    name: "dir1".to_string(),
-                    size: 0,
-                    is_directory: true,
-                },
+                FileInfo { name: "file1.txt".to_string(), size: 100, is_directory: false },
+                FileInfo { name: "dir1".to_string(), size: 0, is_directory: true },
             ],
         };
 
@@ -1055,12 +1136,9 @@ mod tests {
     fn test_list_partitions_output() {
         let output = ListPartitionsOutput {
             partition_table: "GPT".to_string(),
-            zones: vec![ZoneInfo {
-                index: 0,
-                offset: 1048576,
-                length: 100000000,
-                zone_type: "EFI".to_string(),
-            }],
+            zones: vec![
+                ZoneInfo { index: 0, offset: 1048576, length: 100000000, zone_type: "EFI".to_string() },
+            ],
         };
 
         let json = serde_json::to_string(&output).unwrap();
@@ -1130,7 +1208,10 @@ mod tests {
     #[test]
     fn test_analyze_tool_schema() {
         let cache = create_test_cache();
-        let tool = AnalyzeDiskImageTool { cache };
+        let tool = AnalyzeDiskImageTool {
+            cache,
+            allowed_roots: test_allowed_roots(),
+        };
 
         let schema = tool.input_schema();
         assert!(schema["properties"]["path"].is_object());
@@ -1141,20 +1222,21 @@ mod tests {
     #[test]
     fn test_list_partitions_tool_schema() {
         let cache = create_test_cache();
-        let tool = ListPartitionsTool { cache };
+        let tool = ListPartitionsTool {
+            cache,
+            allowed_roots: test_allowed_roots(),
+        };
 
         let schema = tool.input_schema();
         assert!(schema["properties"]["path"].is_object());
-        assert!(schema["required"]
-            .as_array()
-            .unwrap()
-            .contains(&json!("path")));
+        assert!(schema["required"].as_array().unwrap().contains(&json!("path")));
     }
 
     #[test]
     fn test_list_files_tool_schema() {
         let cache = create_test_cache();
-        let tool = ListFilesTool { cache };
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
+        let tool = ListFilesTool { cache, allowed_roots };
 
         let schema = tool.input_schema();
         assert!(schema["properties"]["zone_index"].is_object());
@@ -1162,7 +1244,8 @@ mod tests {
 
     #[test]
     fn test_extract_file_tool_schema() {
-        let tool = ExtractFileTool {};
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
+        let tool = ExtractFileTool { allowed_roots };
 
         let schema = tool.input_schema();
         let required = schema["required"].as_array().unwrap();
@@ -1173,7 +1256,8 @@ mod tests {
 
     #[test]
     fn test_validate_integrity_tool_schema() {
-        let tool = ValidateIntegrityTool {};
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
+        let tool = ValidateIntegrityTool { allowed_roots };
 
         let schema = tool.input_schema();
         assert!(schema["properties"]["check_checksums"].is_object());
@@ -1187,42 +1271,41 @@ mod tests {
     #[test]
     fn test_tool_enum_names() {
         let cache = create_test_cache();
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
 
-        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool {
-            cache: cache.clone(),
-        });
+        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache: cache.clone(), allowed_roots: allowed_roots.clone() });
         assert_eq!(analyze.name(), "analyze_disk_image");
 
-        let list_partitions = ToolEnum::ListPartitions(ListPartitionsTool {
-            cache: cache.clone(),
-        });
+        let list_partitions = ToolEnum::ListPartitions(ListPartitionsTool { cache: cache.clone(), allowed_roots: allowed_roots.clone() });
         assert_eq!(list_partitions.name(), "list_partitions");
 
-        let list_files = ToolEnum::ListFiles(ListFilesTool { cache });
+        let list_files = ToolEnum::ListFiles(ListFilesTool { cache, allowed_roots: allowed_roots.clone() });
         assert_eq!(list_files.name(), "list_files");
 
-        let extract = ToolEnum::ExtractFile(ExtractFileTool {});
+        let extract = ToolEnum::ExtractFile(ExtractFileTool { allowed_roots: allowed_roots.clone() });
         assert_eq!(extract.name(), "extract_file");
 
-        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool {});
+        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool { allowed_roots });
         assert_eq!(validate.name(), "validate_integrity");
     }
 
     #[test]
     fn test_tool_enum_descriptions() {
         let cache = create_test_cache();
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
 
-        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache });
+        let analyze = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache, allowed_roots: allowed_roots.clone() });
         assert!(analyze.description().contains("disk image"));
 
-        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool {});
+        let validate = ToolEnum::ValidateIntegrity(ValidateIntegrityTool { allowed_roots });
         assert!(validate.description().contains("integrity"));
     }
 
     #[test]
     fn test_tool_enum_definition() {
         let cache = create_test_cache();
-        let tool = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache });
+        let allowed_roots = Arc::new(vec![std::env::temp_dir()]);
+        let tool = ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool { cache, allowed_roots });
 
         let def = tool.definition();
         assert_eq!(def.name, "analyze_disk_image");

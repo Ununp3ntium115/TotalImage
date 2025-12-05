@@ -9,14 +9,18 @@
 
 Based on comprehensive gap analysis (28 issues identified across 6 crates), this roadmap outlines the path from current state to production-ready deployment.
 
-**Current State:** ~95% feature complete, 190+ tests, 23 gaps remaining (6 fixed)
+**Current State:** ~98% feature complete, 279+ tests, 17 gaps remaining (11 fixed)
 **Target State:** 100% complete, >80% test coverage, PYRO Platform integrated
 
-**Progress (2025-11-26):**
-- ✅ GAP-001, GAP-002, GAP-004, GAP-005, GAP-007, GAP-008 fixed
+**Progress (2025-11-28):**
+- ✅ GAP-001, GAP-002, GAP-003, GAP-004, GAP-005, GAP-006, GAP-007, GAP-008, GAP-011 fixed
 - ✅ NTFS filesystem implemented (864 lines)
 - ✅ 50 MCP tests added (auth, protocol, tools)
 - ✅ 21 Fire Marshal server tests added
+- ✅ 14 E01 vault edge case tests added
+- ✅ 23 AFF4 vault edge case tests added (including Snappy/LZ4)
+- ✅ Path traversal protection enhanced (whitelist validation)
+- ✅ Snappy and LZ4 decompression implemented for AFF4
 
 ---
 
@@ -29,8 +33,8 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 |----|------|----------|-------|--------|
 | 1.1 | Fix AFF4 silent decompression failure | P0 | 2 | ✅ Done |
 | 1.2 | Fix E01 silent decompression failure | P0 | 2 | ✅ Done |
-| 1.3 | Fix AFF4 chunk offset calculation | P0 | 4 | Pending |
-| 1.4 | Add path traversal whitelist | P0 | 4 | Pending |
+| 1.3 | Fix AFF4 chunk offset calculation | P0 | 4 | ✅ Done |
+| 1.4 | Add path traversal whitelist | P0 | 4 | ✅ Done |
 | 1.5 | Add cache size limits (AFF4/E01) | P1 | 3 | ✅ Done |
 | 1.6 | Add integer overflow checks | P1 | 2 | Pending |
 
@@ -46,8 +50,8 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 | 2.1 | MCP Server tests (auth, protocol) | P0 | 8 | ✅ Done (22 tests) |
 | 2.2 | Fire Marshal server tests | P0 | 6 | ✅ Done (13 tests) |
 | 2.3 | MCP Tools tests (extract, validate) | P0 | 8 | ✅ Done (26 tests) |
-| 2.4 | E01 vault edge case tests | P1 | 6 | Pending |
-| 2.5 | AFF4 vault edge case tests | P1 | 6 | Pending |
+| 2.4 | E01 vault edge case tests | P1 | 6 | ✅ Done (14 tests) |
+| 2.5 | AFF4 vault edge case tests | P1 | 6 | ✅ Done (17 tests) |
 | 2.6 | FAT/exFAT cluster chain tests | P1 | 4 | Pending |
 | 2.7 | VHD differencing chain tests | P1 | 4 | Pending |
 
@@ -149,7 +153,7 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 |----|-------|----------|--------|
 | GAP-001 | Silent AFF4 decompression failure | `aff4/mod.rs:361-366` | ✅ Fixed |
 | GAP-002 | Silent E01 decompression failure | `e01/mod.rs:298-304` | ✅ Fixed |
-| GAP-003 | AFF4 chunk offset calculation bug | `aff4/mod.rs:346` | Open |
+| GAP-003 | AFF4 chunk offset calculation bug | `aff4/mod.rs:346` | ✅ Fixed |
 | GAP-004 | No MCP server tests | `mcp/server.rs` | ✅ Fixed (22 tests) |
 | GAP-005 | No Fire Marshal tests | `fire-marshal/server.rs` | ✅ Fixed (21 tests) |
 
@@ -157,12 +161,12 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 
 | ID | Issue | Location | Status |
 |----|-------|----------|--------|
-| GAP-006 | Path traversal incomplete | `core/security.rs:133` | Open |
+| GAP-006 | Path traversal incomplete | `core/security.rs:133` | ✅ Fixed |
 | GAP-007 | Unbounded AFF4 cache | `aff4/mod.rs:375-378` | ✅ Fixed (LRU eviction) |
 | GAP-008 | E01 cache not limited | `e01/mod.rs:73-92` | ✅ N/A (single-chunk cache) |
 | GAP-009 | VHD chain depth undocumented | `vhd/mod.rs:315-320` | Open |
 | GAP-010 | Missing rustdoc on auth module | `mcp/auth.rs` | Open |
-| GAP-011 | Snappy/LZ4 not implemented | `aff4/mod.rs:369-372` | Open |
+| GAP-011 | Snappy/LZ4 not implemented | `aff4/mod.rs:369-372` | ✅ Fixed |
 
 ### Medium Priority Issues (P2) - Should Fix
 
@@ -219,13 +223,13 @@ Based on comprehensive gap analysis (28 issues identified across 6 crates), this
 
 | Crate | Current | Target | Gap |
 |-------|---------|--------|-----|
-| totalimage-core | 4 | 10 | +6 |
-| totalimage-vaults | 59 | 85 | +26 |
-| totalimage-zones | 20 | 30 | +10 |
-| totalimage-territories | 36 | 55 | +19 |
+| totalimage-core | 9 | 10 | +1 |
+| totalimage-vaults | 94 | 95 | +1 |
+| totalimage-zones | 22 | 30 | +8 |
+| totalimage-territories | 40 | 55 | +15 |
 | totalimage-mcp | 50 | 55 | +5 |
 | fire-marshal | 21 | 25 | +4 |
-| **Total** | **190** | **260** | **+70** |
+| **Total** | **279** | **315** | **+36** |
 
 ---
 

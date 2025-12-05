@@ -33,7 +33,7 @@ mod server;
 mod tools;
 mod websocket;
 
-pub use auth::{AuthConfig, AuthError, AuthMethod, AuthUser, Claims};
+pub use auth::{auth_middleware, AuthConfig, AuthError, AuthMethod, AuthUser, Claims};
 pub use cache::ToolCache;
 pub use metrics::MetricsState;
 pub use protocol::{

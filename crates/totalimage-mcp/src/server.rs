@@ -10,7 +10,7 @@ use crate::metrics::{self, MetricsState};
 use crate::protocol::*;
 use crate::tools::*;
 use crate::websocket::{ws_handler, WsState};
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use axum::{
     extract::State,
     http::StatusCode,
@@ -24,6 +24,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use totalimage_core::{allowed_roots_from_env, allowed_roots_from_env_var};
 
 /// Server mode configuration
 #[derive(Debug, Clone)]
@@ -56,9 +57,10 @@ pub struct IntegratedConfig {
 pub struct MCPServer {
     mode: ServerMode,
     tools: Vec<ToolEnum>,
-    /// Cache for tool results (reserved for future use)
-    #[allow(dead_code)]
+    /// Cache for tool results
     cache: Arc<ToolCache>,
+    #[allow(dead_code)]
+    allowed_roots: Arc<Vec<PathBuf>>,
 }
 
 impl MCPServer {
@@ -71,24 +73,14 @@ impl MCPServer {
             env!("CARGO_PKG_VERSION"),
         )?);
 
-        let tools: Vec<ToolEnum> = vec![
-            ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ListPartitions(ListPartitionsTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ListFiles(ListFilesTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ExtractFile(ExtractFileTool {}),
-            ToolEnum::ValidateIntegrity(ValidateIntegrityTool {}),
-        ];
+        let allowed_roots = resolve_allowed_roots()?;
+        let tools = build_tools(cache.clone(), allowed_roots.clone());
 
         Ok(Self {
             mode: ServerMode::Standalone(config),
             tools,
             cache,
+            allowed_roots,
         })
     }
 
@@ -101,24 +93,14 @@ impl MCPServer {
             env!("CARGO_PKG_VERSION"),
         )?);
 
-        let tools: Vec<ToolEnum> = vec![
-            ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ListPartitions(ListPartitionsTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ListFiles(ListFilesTool {
-                cache: cache.clone(),
-            }),
-            ToolEnum::ExtractFile(ExtractFileTool {}),
-            ToolEnum::ValidateIntegrity(ValidateIntegrityTool {}),
-        ];
+        let allowed_roots = resolve_allowed_roots()?;
+        let tools = build_tools(cache.clone(), allowed_roots.clone());
 
         Ok(Self {
             mode: ServerMode::Integrated(config),
             tools,
             cache,
+            allowed_roots,
         })
     }
 
@@ -332,7 +314,13 @@ impl MCPServer {
             },
         };
 
-        MCPResponse::success(id, serde_json::to_value(result).unwrap())
+        match serde_json::to_value(result) {
+            Ok(value) => MCPResponse::success(id, value),
+            Err(e) => MCPResponse::error(
+                id,
+                MCPError::internal_error(format!("Failed to serialize response: {}", e)),
+            ),
+        }
     }
 
     async fn handle_list_tools(&self, id: RequestId) -> MCPResponse {
@@ -353,12 +341,44 @@ impl MCPServer {
         let tool_name = tool.name();
         let start_time = std::time::Instant::now();
 
+        // Generate cache key from tool name and arguments
+        let cache_key = generate_cache_key(&params.name, &params.arguments);
+
+        // Check cache first (only for cacheable tools)
+        if tool.is_cacheable() {
+            if let Ok(Some(cached)) = self.cache.get::<serde_json::Value>(&cache_key) {
+                tracing::debug!("Cache HIT for tool {}: {}", params.name, cache_key);
+                metrics::record_tool_call(tool_name, true);
+                let duration = start_time.elapsed().as_secs_f64();
+                metrics::record_tool_duration(tool_name, duration);
+                return MCPResponse::success(id, cached);
+            }
+            tracing::debug!("Cache MISS for tool {}: {}", params.name, cache_key);
+        }
+
         // Execute tool with metrics
         let response = match tool.execute(params.arguments).await {
-            Ok(result) => {
-                metrics::record_tool_call(tool_name, true);
-                MCPResponse::success(id, serde_json::to_value(result).unwrap())
-            }
+            Ok(result) => match serde_json::to_value(&result) {
+                Ok(value) => {
+                    // Cache the result if tool is cacheable
+                    if tool.is_cacheable() {
+                        if let Err(e) = self.cache.set(&cache_key, &value) {
+                            tracing::warn!("Failed to cache tool result: {}", e);
+                        } else {
+                            tracing::debug!("Cached result for tool {}: {}", params.name, cache_key);
+                        }
+                    }
+                    metrics::record_tool_call(tool_name, true);
+                    MCPResponse::success(id, value)
+                }
+                Err(e) => {
+                    metrics::record_tool_call(tool_name, false);
+                    MCPResponse::error(
+                        id,
+                        MCPError::internal_error(format!("Failed to serialize tool result: {}", e)),
+                    )
+                }
+            },
             Err(e) => {
                 metrics::record_tool_call(tool_name, false);
                 tracing::error!("Tool execution error: {}", e);
@@ -375,6 +395,63 @@ impl MCPServer {
 
         response
     }
+}
+
+/// Generate a cache key from tool name and arguments
+fn generate_cache_key(tool_name: &str, arguments: &Option<serde_json::Value>) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    tool_name.hash(&mut hasher);
+
+    if let Some(args) = arguments {
+        // Sort keys for consistent hashing
+        if let Some(obj) = args.as_object() {
+            let mut keys: Vec<_> = obj.keys().collect();
+            keys.sort();
+            for key in keys {
+                key.hash(&mut hasher);
+                if let Some(value) = obj.get(key) {
+                    value.to_string().hash(&mut hasher);
+                }
+            }
+        } else {
+            args.to_string().hash(&mut hasher);
+        }
+    }
+
+    format!("{}:{:x}", tool_name, hasher.finish())
+}
+
+fn resolve_allowed_roots() -> Result<Arc<Vec<PathBuf>>> {
+    let roots = allowed_roots_from_env_var("TOTALIMAGE_MCP_ALLOWED_ROOT")
+        .or_else(|_| allowed_roots_from_env())
+        .map_err(|e| anyhow!(e.to_string()))?;
+    Ok(Arc::new(roots))
+}
+
+fn build_tools(cache: Arc<ToolCache>, allowed_roots: Arc<Vec<PathBuf>>) -> Vec<ToolEnum> {
+    vec![
+        ToolEnum::AnalyzeDiskImage(AnalyzeDiskImageTool {
+            cache: cache.clone(),
+            allowed_roots: allowed_roots.clone(),
+        }),
+        ToolEnum::ListPartitions(ListPartitionsTool {
+            cache: cache.clone(),
+            allowed_roots: allowed_roots.clone(),
+        }),
+        ToolEnum::ListFiles(ListFilesTool {
+            cache: cache.clone(),
+            allowed_roots: allowed_roots.clone(),
+        }),
+        ToolEnum::ExtractFile(ExtractFileTool {
+            allowed_roots: allowed_roots.clone(),
+        }),
+        ToolEnum::ValidateIntegrity(ValidateIntegrityTool {
+            allowed_roots,
+        }),
+    ]
 }
 
 // HTTP handler state

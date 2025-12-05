@@ -40,7 +40,8 @@ RUN mkdir -p crates/totalimage-core/src && echo "pub fn dummy() {}" > crates/tot
     mkdir -p crates/fire-marshal/src && echo "fn main() {}" > crates/fire-marshal/src/main.rs
 
 # Build dependencies only (cached layer)
-RUN cargo build --release || true
+# Note: This may fail on first build but will cache dependencies
+RUN cargo build --release 2>/dev/null || echo "Dependency pre-build complete"
 
 # Copy actual source code
 COPY crates/ crates/
@@ -60,15 +61,20 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd -m -s /bin/bash totalimage
 
-# Copy binaries from builder
+# Copy all binaries from builder
+# CLI tool (forensic analysis)
 COPY --from=builder /build/target/release/totalimage /usr/local/bin/
+# Web server (REST API)
 COPY --from=builder /build/target/release/totalimage-web /usr/local/bin/
+# MCP server (Model Context Protocol for AI integration)
 COPY --from=builder /build/target/release/totalimage-mcp /usr/local/bin/
+# Fire Marshal (tool orchestration and discovery)
 COPY --from=builder /build/target/release/fire-marshal /usr/local/bin/
 
 # Create directories for images and cache

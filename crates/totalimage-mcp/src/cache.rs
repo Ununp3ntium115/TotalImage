@@ -77,7 +77,7 @@ impl ToolCache {
 
     /// Get a cached result
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
-        let db = self.db.lock().unwrap();
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let read_txn = db.begin_read()?;
         let table = read_txn.open_table(TOOL_RESULTS_TABLE)?;
 
@@ -109,7 +109,7 @@ impl ToolCache {
         let entry = CacheEntry::new(value, &self.tool_name, &self.version);
         let encoded = bincode::serialize(&entry)?;
 
-        let db = self.db.lock().unwrap();
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let write_txn = db.begin_write()?;
         {
             let mut table = write_txn.open_table(TOOL_RESULTS_TABLE)?;
@@ -122,7 +122,7 @@ impl ToolCache {
 
     /// Clear all cached results
     pub fn clear(&self) -> Result<()> {
-        let db = self.db.lock().unwrap();
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let write_txn = db.begin_write()?;
         {
             let mut table = write_txn.open_table(TOOL_RESULTS_TABLE)?;
@@ -143,7 +143,7 @@ impl ToolCache {
 
     /// Get cache statistics
     pub fn stats(&self) -> Result<CacheStats> {
-        let db = self.db.lock().unwrap();
+        let db = self.db.lock().unwrap_or_else(|e| e.into_inner());
         let read_txn = db.begin_read()?;
         let table = read_txn.open_table(TOOL_RESULTS_TABLE)?;
 
