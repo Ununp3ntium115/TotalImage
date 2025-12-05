@@ -5,7 +5,7 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{Request, StatusCode, header},
+    http::{header, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
@@ -155,10 +155,15 @@ impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             AuthError::MissingToken => (StatusCode::UNAUTHORIZED, "Missing authentication token"),
-            AuthError::InvalidToken(_) => (StatusCode::UNAUTHORIZED, "Invalid authentication token"),
+            AuthError::InvalidToken(_) => {
+                (StatusCode::UNAUTHORIZED, "Invalid authentication token")
+            }
             AuthError::ExpiredToken => (StatusCode::UNAUTHORIZED, "Token has expired"),
             AuthError::InvalidApiKey => (StatusCode::UNAUTHORIZED, "Invalid API key"),
-            AuthError::ConfigError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Authentication configuration error"),
+            AuthError::ConfigError(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Authentication configuration error",
+            ),
         };
 
         let body = serde_json::json!({
@@ -201,8 +206,8 @@ pub fn validate_jwt(token: &str, config: &AuthConfig) -> Result<Claims, AuthErro
         validation.aud = None;
     }
 
-    let token_data = decode::<Claims>(token, &decoding_key, &validation)
-        .map_err(|e| match e.kind() {
+    let token_data =
+        decode::<Claims>(token, &decoding_key, &validation).map_err(|e| match e.kind() {
             jsonwebtoken::errors::ErrorKind::ExpiredSignature => AuthError::ExpiredToken,
             _ => AuthError::InvalidToken(e.to_string()),
         })?;
@@ -263,7 +268,9 @@ pub async fn auth_middleware(
                                 auth_method: AuthMethod::ApiKey,
                             }
                         } else {
-                            return Err(AuthError::InvalidToken("Invalid token or API key".to_string()));
+                            return Err(AuthError::InvalidToken(
+                                "Invalid token or API key".to_string(),
+                            ));
                         }
                     }
                 }

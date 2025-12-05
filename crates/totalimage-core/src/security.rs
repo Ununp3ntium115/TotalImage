@@ -338,7 +338,7 @@ pub fn validate_fs_path_components(path: &str) -> crate::Result<Vec<String>> {
     
     // Split path on / or \
     let parts: Vec<String> = path
-        .split(|c| c == '/' || c == '\\')
+        .split(['/', '\\'])
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect();

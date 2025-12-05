@@ -236,7 +236,8 @@ impl VhdVault {
         }
 
         // Seek to the locator data
-        self.pipeline.seek(SeekFrom::Start(locator.platform_data_offset))?;
+        self.pipeline
+            .seek(SeekFrom::Start(locator.platform_data_offset))?;
 
         let mut data = vec![0u8; locator.platform_data_length as usize];
         self.pipeline.read_exact(&mut data)?;
@@ -409,7 +410,12 @@ impl VhdChainVault {
     }
 
     /// Read data from a specific VHD at a given offset
-    fn read_from_chain(&mut self, chain_index: usize, offset: u64, buf: &mut [u8]) -> io::Result<usize> {
+    fn read_from_chain(
+        &mut self,
+        chain_index: usize,
+        offset: u64,
+        buf: &mut [u8],
+    ) -> io::Result<usize> {
         if chain_index >= self.chain.len() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -584,7 +590,9 @@ impl<R: Read + Seek> Read for VhdDynamicPipeline<R> {
                 let physical_pos = physical_offset + bitmap_size + block_offset;
 
                 self.base.seek(SeekFrom::Start(physical_pos))?;
-                let bytes_read = self.base.read(&mut buf[total_read..total_read + chunk_size])?;
+                let bytes_read = self
+                    .base
+                    .read(&mut buf[total_read..total_read + chunk_size])?;
 
                 if bytes_read == 0 {
                     break; // Unexpected EOF
@@ -694,7 +702,7 @@ mod tests {
 
         let mut sum: u32 = 0;
         for (i, &byte) in bytes.iter().enumerate() {
-            if i >= 64 && i < 68 {
+            if (64..68).contains(&i) {
                 continue;
             }
             sum = sum.wrapping_add(byte as u32);
@@ -729,7 +737,7 @@ mod tests {
 
         // Read first 10 bytes
         let mut buf = [0u8; 10];
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
 
         assert_eq!(&buf, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
@@ -747,7 +755,7 @@ mod tests {
         vault.content().seek(SeekFrom::Start(100)).unwrap();
 
         let mut buf = [0u8; 5];
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
 
         assert_eq!(&buf, &[100, 101, 102, 103, 104]);
     }
@@ -843,11 +851,15 @@ mod tests {
     }
 
     /// Create a synthetic dynamic VHD for testing
-    fn create_test_dynamic_vhd(virtual_size: u64, block_size: u32, allocated_blocks: &[usize]) -> Vec<u8> {
+    fn create_test_dynamic_vhd(
+        virtual_size: u64,
+        block_size: u32,
+        allocated_blocks: &[usize],
+    ) -> Vec<u8> {
         let mut vhd = Vec::new();
 
         // Calculate number of blocks needed
-        let block_count = ((virtual_size + block_size as u64 - 1) / block_size as u64) as u32;
+        let block_count = virtual_size.div_ceil(block_size as u64) as u32;
 
         // Create footer (at beginning for dynamic VHD)
         let footer = create_test_footer(virtual_size, VhdType::Dynamic);
@@ -866,14 +878,14 @@ mod tests {
 
         // Create BAT
         let mut bat_entries = vec![0xFFFFFFFFu32; block_count as usize]; // All unallocated by default
-        let mut next_sector = ((bat_offset + block_count as usize * 4 + 511) / 512) as u32; // Round up to next sector
+        let mut next_sector = (bat_offset + block_count as usize * 4).div_ceil(512) as u32; // Round up to next sector
 
         for &block_idx in allocated_blocks {
             if block_idx < block_count as usize {
                 bat_entries[block_idx] = next_sector;
                 // Each block has: 512-byte bitmap + block_size data
                 let block_total_size = 512 + block_size;
-                next_sector += (block_total_size + 511) / 512; // Round up to sectors
+                next_sector += block_total_size.div_ceil(512); // Round up to sectors
             }
         }
 
@@ -938,7 +950,7 @@ mod tests {
 
         let mut sum: u32 = 0;
         for (i, &byte) in bytes.iter().enumerate() {
-            if i >= 36 && i < 40 {
+            if (36..40).contains(&i) {
                 continue;
             }
             sum = sum.wrapping_add(byte as u32);
@@ -984,7 +996,7 @@ mod tests {
         // Read from allocated block 0
         vault.content().seek(SeekFrom::Start(0)).unwrap();
         let mut buf = [0u8; 10];
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
         assert_eq!(&buf, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
 
@@ -1002,9 +1014,12 @@ mod tests {
         let mut vault = VhdVault::open(tmpfile.path(), VaultConfig::default()).unwrap();
 
         // Read from sparse block 1 (should return zeros)
-        vault.content().seek(SeekFrom::Start(block_size as u64)).unwrap();
+        vault
+            .content()
+            .seek(SeekFrom::Start(block_size as u64))
+            .unwrap();
         let mut buf = [0u8; 100];
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
 
         // All zeros for sparse block
         assert_eq!(&buf[..], &[0u8; 100]);
@@ -1026,7 +1041,7 @@ mod tests {
         // Read across block boundary
         vault.content().seek(SeekFrom::Start(4090)).unwrap();
         let mut buf = [0u8; 12]; // Read 6 bytes from block 0, 6 from block 1
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
 
         // Verify data from both blocks
         let expected: Vec<u8> = (4090u64..4102u64).map(|i| (i % 256) as u8).collect();
@@ -1072,17 +1087,17 @@ mod tests {
         // Test seeking to various positions
         vault.content().seek(SeekFrom::Start(100)).unwrap();
         let mut buf = [0u8; 5];
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
         assert_eq!(&buf, &[100, 101, 102, 103, 104]);
 
         // Seek from current
         vault.content().seek(SeekFrom::Current(10)).unwrap();
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
         assert_eq!(&buf, &[115, 116, 117, 118, 119]);
 
         // Seek from end
         vault.content().seek(SeekFrom::End(-10)).unwrap();
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
         let expected: Vec<u8> = ((virtual_size - 10)..(virtual_size - 5))
             .map(|i| (i % 256) as u8)
             .collect();
@@ -1096,10 +1111,6 @@ mod tests {
 
         // Verify limit is defined and reasonable
         assert_eq!(MAX_VHD_CHAIN_DEPTH, 10);
-
-        // A chain of 10 should be valid
-        assert!(MAX_VHD_CHAIN_DEPTH > 0);
-        assert!(MAX_VHD_CHAIN_DEPTH <= 100); // Sanity check
     }
 
     #[test]

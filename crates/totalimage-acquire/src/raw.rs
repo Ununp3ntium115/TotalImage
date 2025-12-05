@@ -128,7 +128,8 @@ impl RawAcquirer {
             .map_err(|e| AcquireError::DestinationError(e.to_string()))?;
 
         // Perform acquisition
-        let result = self.acquire_stream(&mut source, &mut dest, Some(total_bytes), progress_callback)?;
+        let result =
+            self.acquire_stream(&mut source, &mut dest, Some(total_bytes), progress_callback)?;
 
         // Verify if requested
         let verified = if self.options.verify_after && !result.hashes.is_empty() {
@@ -204,7 +205,8 @@ impl RawAcquirer {
                 .map_err(|e| AcquireError::WriteError(e.to_string()))?;
 
             if self.options.sync_writes {
-                dest.flush().map_err(|e| AcquireError::WriteError(e.to_string()))?;
+                dest.flush()
+                    .map_err(|e| AcquireError::WriteError(e.to_string()))?;
             }
 
             bytes_acquired += bytes_read as u64;
@@ -222,7 +224,8 @@ impl RawAcquirer {
         }
 
         // Final flush
-        dest.flush().map_err(|e| AcquireError::WriteError(e.to_string()))?;
+        dest.flush()
+            .map_err(|e| AcquireError::WriteError(e.to_string()))?;
 
         let elapsed = start_time.elapsed();
         let bytes_per_second = if elapsed.as_secs_f64() > 0.0 {
@@ -249,7 +252,9 @@ impl RawAcquirer {
         let actual_hashes = crate::hash::hash_reader(&mut file, &algorithms)?;
 
         for expected in expected_hashes {
-            let actual = actual_hashes.iter().find(|h| h.algorithm == expected.algorithm);
+            let actual = actual_hashes
+                .iter()
+                .find(|h| h.algorithm == expected.algorithm);
             if let Some(actual) = actual {
                 if !actual.matches(expected) {
                     return Err(AcquireError::HashMismatch {
@@ -283,12 +288,9 @@ mod tests {
         let mut dest = Vec::new();
 
         let acquirer = RawAcquirer::new();
-        let result = acquirer.acquire_stream(
-            &mut source,
-            &mut dest,
-            Some(source_data.len() as u64),
-            None,
-        ).unwrap();
+        let result = acquirer
+            .acquire_stream(&mut source, &mut dest, Some(source_data.len() as u64), None)
+            .unwrap();
 
         assert_eq!(result.bytes_acquired, source_data.len() as u64);
         assert_eq!(dest, source_data);
@@ -311,7 +313,9 @@ mod tests {
             ..Default::default()
         });
 
-        let result = acquirer.acquire_to_file(&source_path, &dest_path, None).unwrap();
+        let result = acquirer
+            .acquire_to_file(&source_path, &dest_path, None)
+            .unwrap();
 
         assert_eq!(result.bytes_acquired, 1024);
         assert_eq!(result.verified, Some(true));
@@ -337,7 +341,9 @@ mod tests {
             ..Default::default()
         });
 
-        let result = acquirer.acquire_to_file(&source_path, &dest_path, None).unwrap();
+        let result = acquirer
+            .acquire_to_file(&source_path, &dest_path, None)
+            .unwrap();
 
         assert_eq!(result.bytes_acquired, 500);
     }
@@ -356,12 +362,8 @@ mod tests {
         // Set cancel flag
         acquirer.cancel_flag().store(true, Ordering::Relaxed);
 
-        let result = acquirer.acquire_stream(
-            &mut source,
-            &mut dest,
-            Some(source_data.len() as u64),
-            None,
-        );
+        let result =
+            acquirer.acquire_stream(&mut source, &mut dest, Some(source_data.len() as u64), None);
 
         assert!(matches!(result, Err(AcquireError::Cancelled)));
     }

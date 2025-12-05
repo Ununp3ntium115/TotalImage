@@ -161,13 +161,11 @@ impl E01SectionDescriptor {
         let section_type = SectionType::from_bytes(&type_bytes);
 
         let next_offset = u64::from_le_bytes([
-            data[16], data[17], data[18], data[19],
-            data[20], data[21], data[22], data[23],
+            data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
         ]);
 
         let section_size = u64::from_le_bytes([
-            data[24], data[25], data[26], data[27],
-            data[28], data[29], data[30], data[31],
+            data[24], data[25], data[26], data[27], data[28], data[29], data[30], data[31],
         ]);
 
         let mut padding = [0u8; 40];
@@ -216,8 +214,7 @@ impl E01VolumeSection {
         let sectors_per_chunk = u32::from_le_bytes([data[8], data[9], data[10], data[11]]);
         let bytes_per_sector = u32::from_le_bytes([data[12], data[13], data[14], data[15]]);
         let sector_count = u64::from_le_bytes([
-            data[16], data[17], data[18], data[19],
-            data[20], data[21], data[22], data[23],
+            data[16], data[17], data[18], data[19], data[20], data[21], data[22], data[23],
         ]);
 
         // Compression is at offset 88
@@ -279,10 +276,7 @@ impl E01HashSection {
 
     /// Get MD5 hash as hex string
     pub fn md5_hex(&self) -> String {
-        self.md5_hash
-            .iter()
-            .map(|b| format!("{:02x}", b))
-            .collect()
+        self.md5_hash.iter().map(|b| format!("{:02x}", b)).collect()
     }
 }
 
@@ -407,8 +401,8 @@ mod tests {
     fn test_e01_hash_hex() {
         let hash = E01HashSection {
             md5_hash: [
-                0xd4, 0x1d, 0x8c, 0xd9, 0x8f, 0x00, 0xb2, 0x04,
-                0xe9, 0x80, 0x09, 0x98, 0xec, 0xf8, 0x42, 0x7e,
+                0xd4, 0x1d, 0x8c, 0xd9, 0x8f, 0x00, 0xb2, 0x04, 0xe9, 0x80, 0x09, 0x98, 0xec, 0xf8,
+                0x42, 0x7e,
             ],
             checksum: 0,
         };

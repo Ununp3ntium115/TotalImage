@@ -2,7 +2,7 @@
 //!
 //! Supports MD5, SHA1, and SHA256 algorithms for chain of custody.
 
-use md5::{Md5, Digest};
+use md5::{Digest, Md5};
 use sha1::Sha1;
 use sha2::Sha256;
 use std::io::Read;
@@ -53,7 +53,11 @@ impl HashResult {
     /// Create a new hash result
     pub fn new(algorithm: HashAlgorithm, hash: Vec<u8>) -> Self {
         let hex = hex::encode(&hash);
-        Self { algorithm, hash, hex }
+        Self {
+            algorithm,
+            hash,
+            hex,
+        }
     }
 
     /// Verify that this hash matches another
@@ -106,7 +110,11 @@ impl Hasher {
 
     /// Create a hasher with all algorithms enabled
     pub fn all() -> Self {
-        Self::new(&[HashAlgorithm::Md5, HashAlgorithm::Sha1, HashAlgorithm::Sha256])
+        Self::new(&[
+            HashAlgorithm::Md5,
+            HashAlgorithm::Sha1,
+            HashAlgorithm::Sha256,
+        ])
     }
 
     /// Update the hasher with data
@@ -152,7 +160,10 @@ impl Hasher {
 }
 
 /// Compute hash of a reader
-pub fn hash_reader<R: Read>(reader: &mut R, algorithms: &[HashAlgorithm]) -> std::io::Result<Vec<HashResult>> {
+pub fn hash_reader<R: Read>(
+    reader: &mut R,
+    algorithms: &[HashAlgorithm],
+) -> std::io::Result<Vec<HashResult>> {
     let mut hasher = Hasher::new(algorithms);
     let mut buffer = vec![0u8; 1024 * 1024]; // 1MB buffer
 
@@ -168,7 +179,10 @@ pub fn hash_reader<R: Read>(reader: &mut R, algorithms: &[HashAlgorithm]) -> std
 }
 
 /// Compute hash of a file
-pub fn hash_file(path: &std::path::Path, algorithms: &[HashAlgorithm]) -> std::io::Result<Vec<HashResult>> {
+pub fn hash_file(
+    path: &std::path::Path,
+    algorithms: &[HashAlgorithm],
+) -> std::io::Result<Vec<HashResult>> {
     let mut file = std::fs::File::open(path)?;
     hash_reader(&mut file, algorithms)
 }
@@ -199,14 +213,25 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].algorithm, HashAlgorithm::Sha256);
         // SHA256("Hello, World!") = dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f
-        assert_eq!(results[0].hex, "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f");
+        assert_eq!(
+            results[0].hex,
+            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        );
     }
 
     #[test]
     fn test_multi_hash() {
         let data = b"test";
         let mut reader = Cursor::new(data);
-        let results = hash_reader(&mut reader, &[HashAlgorithm::Md5, HashAlgorithm::Sha1, HashAlgorithm::Sha256]).unwrap();
+        let results = hash_reader(
+            &mut reader,
+            &[
+                HashAlgorithm::Md5,
+                HashAlgorithm::Sha1,
+                HashAlgorithm::Sha256,
+            ],
+        )
+        .unwrap();
 
         assert_eq!(results.len(), 3);
     }

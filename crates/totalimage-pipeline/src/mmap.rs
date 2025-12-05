@@ -56,7 +56,7 @@ impl MmapPipeline {
         if !metadata.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Only regular files can be memory-mapped"
+                "Only regular files can be memory-mapped",
             ));
         }
 
@@ -69,7 +69,7 @@ impl MmapPipeline {
                     "File size {} exceeds memory mapping limit {} (16 GB)",
                     metadata.len(),
                     MAX_MMAP_SIZE
-                )
+                ),
             ));
         }
 
@@ -99,7 +99,7 @@ impl MmapPipeline {
         if !metadata.is_file() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Only regular files can be memory-mapped"
+                "Only regular files can be memory-mapped",
             ));
         }
 
@@ -112,7 +112,7 @@ impl MmapPipeline {
                     "File size {} exceeds memory mapping limit {} (16 GB)",
                     metadata.len(),
                     MAX_MMAP_SIZE
-                )
+                ),
             ));
         }
 
@@ -249,7 +249,7 @@ mod tests {
         assert_eq!(pipeline.position(), 50);
 
         let mut buf = [0u8; 5];
-        pipeline.read(&mut buf).unwrap();
+        pipeline.read_exact(&mut buf).unwrap();
         assert_eq!(&buf, &[50, 51, 52, 53, 54]);
     }
 

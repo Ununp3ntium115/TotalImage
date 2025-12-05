@@ -74,13 +74,12 @@ pub fn detect_vault_type(path: &Path) -> Result<VaultType> {
     // Check VHD footer at end of file
     if let Ok(metadata) = file.metadata() {
         let file_size = metadata.len();
-        if file_size >= 512
-            && file.seek(SeekFrom::End(-512)).is_ok() {
-                let mut footer = [0u8; 8];
-                if file.read_exact(&mut footer).is_ok() && footer == VHD_MAGIC {
-                    return Ok(VaultType::Vhd);
-                }
+        if file_size >= 512 && file.seek(SeekFrom::End(-512)).is_ok() {
+            let mut footer = [0u8; 8];
+            if file.read_exact(&mut footer).is_ok() && footer == VHD_MAGIC {
+                return Ok(VaultType::Vhd);
             }
+        }
     }
 
     // Fall back to extension
@@ -154,7 +153,11 @@ pub fn open_vault(path: &Path, config: VaultConfig) -> Result<Box<dyn Vault>> {
 /// Open a vault with a specific type (skip auto-detection)
 ///
 /// Use this when you know the vault type or want to force a specific handler.
-pub fn open_vault_as(path: &Path, vault_type: VaultType, config: VaultConfig) -> Result<Box<dyn Vault>> {
+pub fn open_vault_as(
+    path: &Path,
+    vault_type: VaultType,
+    config: VaultConfig,
+) -> Result<Box<dyn Vault>> {
     match vault_type {
         VaultType::Raw => {
             let vault = RawVault::open(path, config)?;
@@ -183,7 +186,10 @@ pub fn open_vault_as(path: &Path, vault_type: VaultType, config: VaultConfig) ->
 /// Get information about supported vault types
 pub fn supported_formats() -> Vec<(&'static str, &'static [&'static str])> {
     vec![
-        ("Raw Sector Image", &["img", "ima", "flp", "vfd", "dsk", "iso", "bin", "raw", "dd"]),
+        (
+            "Raw Sector Image",
+            &["img", "ima", "flp", "vfd", "dsk", "iso", "bin", "raw", "dd"],
+        ),
         ("Microsoft VHD", &["vhd"]),
         ("EnCase E01", &["e01", "ex01", "s01", "l01"]),
         ("AFF4 Container", &["aff4", "af4"]),

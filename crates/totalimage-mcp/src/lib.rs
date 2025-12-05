@@ -25,28 +25,29 @@
 //! totalimage-mcp integrated --marshal-url http://localhost:3001 --port 3002
 //! ```
 
-mod protocol;
-mod tools;
-mod server;
-mod cache;
 mod auth;
-mod websocket;
+mod cache;
 pub mod metrics;
+mod protocol;
+mod server;
+mod tools;
+mod websocket;
 
-pub use protocol::{
-    MCPRequest, MCPResponse, MCPError, MCPErrorCode,
-    InitializeParams, CallToolParams, ToolResult, Content,
-};
-pub use tools::{
-    Tool, ToolInfo, ToolEnum,
-    AnalyzeDiskImageTool, ListPartitionsTool, ListFilesTool,
-    ExtractFileTool, ValidateIntegrityTool,
-};
-pub use server::{MCPServer, ServerMode, StandaloneConfig, IntegratedConfig};
+pub use auth::{auth_middleware, AuthConfig, AuthError, AuthMethod, AuthUser, Claims};
 pub use cache::ToolCache;
-pub use auth::{AuthConfig, AuthUser, AuthMethod, AuthError, Claims, auth_middleware};
-pub use websocket::{WsState, WsMessage, ProgressUpdate, CompletedUpdate, FailedUpdate, ws_handler};
 pub use metrics::MetricsState;
+pub use protocol::{
+    CallToolParams, Content, InitializeParams, MCPError, MCPErrorCode, MCPRequest, MCPResponse,
+    ToolResult,
+};
+pub use server::{IntegratedConfig, MCPServer, ServerMode, StandaloneConfig};
+pub use tools::{
+    AnalyzeDiskImageTool, ExtractFileTool, ListFilesTool, ListPartitionsTool, Tool, ToolEnum,
+    ToolInfo, ValidateIntegrityTool,
+};
+pub use websocket::{
+    ws_handler, CompletedUpdate, FailedUpdate, ProgressUpdate, WsMessage, WsState,
+};
 
-pub use totalimage_core::Result as TotalImageResult;
 pub use anyhow::Result;
+pub use totalimage_core::Result as TotalImageResult;

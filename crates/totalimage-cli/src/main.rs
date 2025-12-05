@@ -60,7 +60,10 @@ fn main() {
         }
         "extract" => {
             if args.len() < 4 {
-                eprintln!("Usage: {} extract <image_file> <file_path> [--zone INDEX] [--output PATH]", args[0]);
+                eprintln!(
+                    "Usage: {} extract <image_file> <file_path> [--zone INDEX] [--output PATH]",
+                    args[0]
+                );
                 process::exit(1);
             }
             let zone_index = match parse_zone_arg(&args) {
@@ -112,7 +115,10 @@ fn print_usage(program: &str) {
     println!("    {} info disk.img", program);
     println!("    {} zones floppy.img", program);
     println!("    {} list disk.img --zone 0", program);
-    println!("    {} extract disk.img AUTOEXEC.BAT --output autoexec.bat", program);
+    println!(
+        "    {} extract disk.img AUTOEXEC.BAT --output autoexec.bat",
+        program
+    );
 }
 
 fn cmd_info(image_path: &str) -> Result<()> {
@@ -122,7 +128,11 @@ fn cmd_info(image_path: &str) -> Result<()> {
     println!("=== Vault Information ===");
     println!("Path:   {}", image_path);
     println!("Type:   {}", vault.identify());
-    println!("Size:   {} bytes ({:.2} MB)", vault.length(), vault.length() as f64 / 1_048_576.0);
+    println!(
+        "Size:   {} bytes ({:.2} MB)",
+        vault.length(),
+        vault.length() as f64 / 1_048_576.0
+    );
     println!();
 
     // Try to detect sector size (assume 512 for now)
@@ -170,7 +180,10 @@ fn cmd_zones(image_path: &str) -> Result<()> {
         if mbr.enumerate_zones().is_empty() {
             println!("No partitions found.");
         } else {
-            println!("{:<5} {:<15} {:<15} {:<20}", "Index", "Offset", "Size", "Type");
+            println!(
+                "{:<5} {:<15} {:<15} {:<20}",
+                "Index", "Offset", "Size", "Type"
+            );
             println!("{}", "-".repeat(60));
 
             for zone in mbr.enumerate_zones() {
@@ -188,11 +201,8 @@ fn cmd_zones(image_path: &str) -> Result<()> {
                 println!();
                 println!("=== First Partition Analysis ===");
 
-                let mut partial = PartialPipeline::new(
-                    vault.content(),
-                    first_zone.offset,
-                    first_zone.length,
-                )?;
+                let mut partial =
+                    PartialPipeline::new(vault.content(), first_zone.offset, first_zone.length)?;
 
                 if let Ok(fat) = totalimage_territories::FatTerritory::parse(&mut partial) {
                     use totalimage_core::Territory;
@@ -200,7 +210,10 @@ fn cmd_zones(image_path: &str) -> Result<()> {
                     println!("Filesystem:  {}", fat.identify());
                     println!("Domain:      {}", format_bytes(fat.domain_size()));
                     println!("Block size:  {}", format_bytes(fat.block_size()));
-                    println!("Hierarchical: {}", if fat.hierarchical() { "Yes" } else { "No" });
+                    println!(
+                        "Hierarchical: {}",
+                        if fat.hierarchical() { "Yes" } else { "No" }
+                    );
                 }
             }
         }
@@ -211,7 +224,10 @@ fn cmd_zones(image_path: &str) -> Result<()> {
         if gpt.enumerate_zones().is_empty() {
             println!("No partitions found.");
         } else {
-            println!("{:<5} {:<15} {:<15} {:<40}", "Index", "Offset", "Size", "Type");
+            println!(
+                "{:<5} {:<15} {:<15} {:<40}",
+                "Index", "Offset", "Size", "Type"
+            );
             println!("{}", "-".repeat(80));
 
             for zone in gpt.enumerate_zones() {
@@ -235,10 +251,12 @@ fn cmd_zones(image_path: &str) -> Result<()> {
 fn parse_zone_arg(args: &[String]) -> Result<usize> {
     for i in 0..args.len() - 1 {
         if args[i] == "--zone" {
-            return args[i + 1].parse()
-                .map_err(|_| totalimage_core::Error::InvalidOperation(
-                    format!("Invalid zone index: '{}' (expected non-negative integer)", args[i + 1])
-                ));
+            return args[i + 1].parse().map_err(|_| {
+                totalimage_core::Error::InvalidOperation(format!(
+                    "Invalid zone index: '{}' (expected non-negative integer)",
+                    args[i + 1]
+                ))
+            });
         }
     }
     Ok(0) // Default to zone 0 if --zone not provided
@@ -264,14 +282,22 @@ fn cmd_list(image_path: &str, zone_index: usize) -> Result<()> {
     let zone = if let Ok(mbr) = MbrZoneTable::parse(vault.content(), sector_size) {
         let zones = mbr.enumerate_zones();
         if zone_index >= zones.len() {
-            eprintln!("Error: Zone index {} out of range (0-{})", zone_index, zones.len() - 1);
+            eprintln!(
+                "Error: Zone index {} out of range (0-{})",
+                zone_index,
+                zones.len() - 1
+            );
             process::exit(1);
         }
         zones[zone_index].clone()
     } else if let Ok(gpt) = GptZoneTable::parse(vault.content(), sector_size) {
         let zones = gpt.enumerate_zones();
         if zone_index >= zones.len() {
-            eprintln!("Error: Zone index {} out of range (0-{})", zone_index, zones.len() - 1);
+            eprintln!(
+                "Error: Zone index {} out of range (0-{})",
+                zone_index,
+                zones.len() - 1
+            );
             process::exit(1);
         }
         zones[zone_index].clone()
@@ -327,7 +353,12 @@ fn cmd_list(image_path: &str, zone_index: usize) -> Result<()> {
     Ok(())
 }
 
-fn cmd_extract(image_path: &str, file_path: &str, zone_index: usize, output_path: Option<&str>) -> Result<()> {
+fn cmd_extract(
+    image_path: &str,
+    file_path: &str,
+    zone_index: usize,
+    output_path: Option<&str>,
+) -> Result<()> {
     use std::io::Write;
 
     let path = Path::new(image_path);
@@ -338,14 +369,22 @@ fn cmd_extract(image_path: &str, file_path: &str, zone_index: usize, output_path
     let zone = if let Ok(mbr) = MbrZoneTable::parse(vault.content(), sector_size) {
         let zones = mbr.enumerate_zones();
         if zone_index >= zones.len() {
-            eprintln!("Error: Zone index {} out of range (0-{})", zone_index, zones.len() - 1);
+            eprintln!(
+                "Error: Zone index {} out of range (0-{})",
+                zone_index,
+                zones.len() - 1
+            );
             process::exit(1);
         }
         zones[zone_index].clone()
     } else if let Ok(gpt) = GptZoneTable::parse(vault.content(), sector_size) {
         let zones = gpt.enumerate_zones();
         if zone_index >= zones.len() {
-            eprintln!("Error: Zone index {} out of range (0-{})", zone_index, zones.len() - 1);
+            eprintln!(
+                "Error: Zone index {} out of range (0-{})",
+                zone_index,
+                zones.len() - 1
+            );
             process::exit(1);
         }
         zones[zone_index].clone()
@@ -379,7 +418,12 @@ fn cmd_extract(image_path: &str, file_path: &str, zone_index: usize, output_path
         // Write to output
         if let Some(output) = output_path {
             std::fs::write(output, &data)?;
-            println!("Extracted {} ({} bytes) to {}", file_path, data.len(), output);
+            println!(
+                "Extracted {} ({} bytes) to {}",
+                file_path,
+                data.len(),
+                output
+            );
         } else {
             // Write to stdout
             std::io::stdout().write_all(&data)?;

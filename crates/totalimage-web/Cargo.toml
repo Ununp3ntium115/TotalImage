@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 totalimage-core = { path = "../totalimage-core" }
+totalimage-pipeline = { path = "../totalimage-pipeline" }
 totalimage-vaults = { path = "../totalimage-vaults" }
 totalimage-zones = { path = "../totalimage-zones" }
 totalimage-territories = { path = "../totalimage-territories" }
@@ -31,6 +32,7 @@ rustls-pemfile.workspace = true
 jsonwebtoken.workspace = true
 # Production hardening
 governor = "0.6"
+mime_guess = "2.0"
 
 [dev-dependencies]
 tempfile.workspace = true

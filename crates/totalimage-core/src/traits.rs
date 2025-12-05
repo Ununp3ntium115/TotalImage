@@ -1,6 +1,9 @@
 //! Core traits for Total Liberation
 
-use crate::{error::Result, types::{OccupantInfo, Zone}};
+use crate::{
+    error::Result,
+    types::{OccupantInfo, Zone},
+};
 use std::io::{Read, Seek, Write};
 
 /// Trait for disk image vaults (containers)
@@ -40,7 +43,7 @@ pub trait Territory: Send + Sync {
     /// Set the volume label (not implemented for read-only)
     fn set_banner(&mut self, _label: &str) -> Result<()> {
         Err(crate::error::Error::Unsupported(
-            "Setting banner not supported in read-only mode".to_string()
+            "Setting banner not supported in read-only mode".to_string(),
         ))
     }
 

@@ -68,7 +68,7 @@ impl DiskGeometry {
 /// the beginning.
 #[derive(Debug, Clone)]
 pub struct VhdFooter {
-    pub cookie: [u8; 8],           // "conectix"
+    pub cookie: [u8; 8], // "conectix"
     pub features: u32,
     pub version: u32,
     pub data_offset: u64,
@@ -117,8 +117,7 @@ impl VhdFooter {
         let features = u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
         let version = u32::from_be_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
         let data_offset = u64::from_be_bytes([
-            bytes[16], bytes[17], bytes[18], bytes[19],
-            bytes[20], bytes[21], bytes[22], bytes[23],
+            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23],
         ]);
         let timestamp = u32::from_be_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]);
 
@@ -128,12 +127,10 @@ impl VhdFooter {
         let creator_version = u32::from_be_bytes([bytes[32], bytes[33], bytes[34], bytes[35]]);
         let creator_os = u32::from_be_bytes([bytes[36], bytes[37], bytes[38], bytes[39]]);
         let original_size = u64::from_be_bytes([
-            bytes[40], bytes[41], bytes[42], bytes[43],
-            bytes[44], bytes[45], bytes[46], bytes[47],
+            bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
         ]);
         let current_size = u64::from_be_bytes([
-            bytes[48], bytes[49], bytes[50], bytes[51],
-            bytes[52], bytes[53], bytes[54], bytes[55],
+            bytes[48], bytes[49], bytes[50], bytes[51], bytes[52], bytes[53], bytes[54], bytes[55],
         ]);
 
         let geometry = DiskGeometry::parse(&bytes[56..60]);
@@ -223,7 +220,7 @@ impl VhdFooter {
 /// offset specified in the footer's data_offset field.
 #[derive(Debug, Clone)]
 pub struct VhdDynamicHeader {
-    pub cookie: [u8; 8],              // "cxsparse"
+    pub cookie: [u8; 8], // "cxsparse"
     pub data_offset: u64,
     pub table_offset: u64,
     pub header_version: u32,
@@ -267,12 +264,10 @@ impl VhdDynamicHeader {
 
         // Parse fields (all big-endian)
         let data_offset = u64::from_be_bytes([
-            bytes[8], bytes[9], bytes[10], bytes[11],
-            bytes[12], bytes[13], bytes[14], bytes[15],
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
         ]);
         let table_offset = u64::from_be_bytes([
-            bytes[16], bytes[17], bytes[18], bytes[19],
-            bytes[20], bytes[21], bytes[22], bytes[23],
+            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23],
         ]);
         let header_version = u32::from_be_bytes([bytes[24], bytes[25], bytes[26], bytes[27]]);
         let max_table_entries = u32::from_be_bytes([bytes[28], bytes[29], bytes[30], bytes[31]]);
@@ -287,9 +282,9 @@ impl VhdDynamicHeader {
 
         // Parse parent unicode name (256 UTF-16 BE characters)
         let mut parent_unicode_name = [0u16; 256];
-        for (i, name_char) in parent_unicode_name.iter_mut().enumerate() {
+        for (i, name) in parent_unicode_name.iter_mut().enumerate() {
             let offset = 64 + i * 2;
-            *name_char = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+            *name = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
         }
 
         // Parse parent locator entries (8 entries of 24 bytes each)
@@ -405,7 +400,10 @@ impl BlockAllocationTable {
             entries.push(entry);
         }
 
-        Ok(Self { entries, block_size })
+        Ok(Self {
+            entries,
+            block_size,
+        })
     }
 
     /// Get the sector offset for a block index
@@ -482,8 +480,7 @@ impl ParentLocatorEntry {
         let platform_data_length = u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
         let reserved = u32::from_be_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]);
         let platform_data_offset = u64::from_be_bytes([
-            bytes[16], bytes[17], bytes[18], bytes[19],
-            bytes[20], bytes[21], bytes[22], bytes[23],
+            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21], bytes[22], bytes[23],
         ]);
 
         Ok(Self {
@@ -516,9 +513,7 @@ impl VhdDynamicHeader {
     pub fn parent_locators(&self) -> Vec<ParentLocatorEntry> {
         self.parent_locator_entries
             .iter()
-            .filter_map(|entry| {
-                ParentLocatorEntry::parse(entry).ok()
-            })
+            .filter_map(|entry| ParentLocatorEntry::parse(entry).ok())
             .filter(|entry| entry.is_valid())
             .collect()
     }
@@ -526,7 +521,8 @@ impl VhdDynamicHeader {
     /// Get the parent name as a string (from the Unicode name field)
     pub fn parent_name(&self) -> Option<String> {
         // Find the null terminator
-        let end = self.parent_unicode_name
+        let end = self
+            .parent_unicode_name
             .iter()
             .position(|&c| c == 0)
             .unwrap_or(self.parent_unicode_name.len());
@@ -548,7 +544,10 @@ mod tests {
         assert!(matches!(VhdType::from_u32(0).unwrap(), VhdType::None));
         assert!(matches!(VhdType::from_u32(2).unwrap(), VhdType::Fixed));
         assert!(matches!(VhdType::from_u32(3).unwrap(), VhdType::Dynamic));
-        assert!(matches!(VhdType::from_u32(4).unwrap(), VhdType::Differencing));
+        assert!(matches!(
+            VhdType::from_u32(4).unwrap(),
+            VhdType::Differencing
+        ));
         assert!(VhdType::from_u32(99).is_err());
     }
 

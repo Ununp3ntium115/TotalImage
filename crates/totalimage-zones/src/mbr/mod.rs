@@ -118,7 +118,12 @@ impl MbrZoneTable {
             let zone_length = lba_length as u64 * sector_size as u64;
 
             // Create zone
-            let zone = Zone::new(i, zone_offset, zone_length, partition_type.name().to_string());
+            let zone = Zone::new(
+                i,
+                zone_offset,
+                zone_length,
+                partition_type.name().to_string(),
+            );
 
             zones.push(zone);
         }

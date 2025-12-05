@@ -148,11 +148,7 @@ impl CHSAddress {
         let cyl_high = ((self.cylinder >> 8) & 0x03) as u8;
         let cyl_low = (self.cylinder & 0xFF) as u8;
 
-        [
-            self.head,
-            (self.sector & 0x3F) | (cyl_high << 6),
-            cyl_low,
-        ]
+        [self.head, (self.sector & 0x3F) | (cyl_high << 6), cyl_low]
     }
 
     /// Convert CHS to LBA (approximate, requires disk geometry)
@@ -178,9 +174,18 @@ mod tests {
     #[test]
     fn test_partition_type_from_byte() {
         assert_eq!(MbrPartitionType::from_byte(0x00), MbrPartitionType::Empty);
-        assert_eq!(MbrPartitionType::from_byte(0x0B), MbrPartitionType::Fat32Chs);
-        assert_eq!(MbrPartitionType::from_byte(0x83), MbrPartitionType::LinuxNative);
-        assert!(matches!(MbrPartitionType::from_byte(0xFF), MbrPartitionType::Unknown(0xFF)));
+        assert_eq!(
+            MbrPartitionType::from_byte(0x0B),
+            MbrPartitionType::Fat32Chs
+        );
+        assert_eq!(
+            MbrPartitionType::from_byte(0x83),
+            MbrPartitionType::LinuxNative
+        );
+        assert!(matches!(
+            MbrPartitionType::from_byte(0xFF),
+            MbrPartitionType::Unknown(0xFF)
+        ));
     }
 
     #[test]

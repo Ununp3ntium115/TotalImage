@@ -46,13 +46,13 @@ impl FatTerritory {
         let fat_size_u64 = totalimage_core::checked_multiply_u32_to_u64(
             bpb.sectors_per_fat(),
             bpb.bytes_per_sector as u32,
-            "FAT table size"
+            "FAT table size",
         )?;
 
         let fat_size = validate_allocation_size(
             fat_size_u64,
             totalimage_core::MAX_FAT_TABLE_SIZE,
-            "FAT table"
+            "FAT table",
         )?;
 
         stream.seek(SeekFrom::Start(bpb.fat_offset()? as u64))?;
@@ -64,7 +64,12 @@ impl FatTerritory {
         // For FAT32, read the root cluster from extended BPB
         let fat32_root_cluster = if bpb.fat_type == FatType::Fat32 {
             // Root cluster is at offset 44 in the boot sector
-            u32::from_le_bytes([boot_sector[44], boot_sector[45], boot_sector[46], boot_sector[47]])
+            u32::from_le_bytes([
+                boot_sector[44],
+                boot_sector[45],
+                boot_sector[46],
+                boot_sector[47],
+            ])
         } else {
             0
         };
@@ -108,7 +113,7 @@ impl FatTerritory {
             u16::from_le_bytes([self.fat_table[offset], self.fat_table[offset + 1]]) >> 4
         };
 
-        // Check for end of chain markers or invalid clusters
+        // Check for end of chain markers and invalid values
         if value >= 0xFF8 || value == 0 || value == 1 {
             None
         } else {
@@ -125,7 +130,7 @@ impl FatTerritory {
 
         let value = u16::from_le_bytes([self.fat_table[offset], self.fat_table[offset + 1]]);
 
-        // Check for end of chain markers or invalid clusters
+        // Check for end of chain markers and invalid values
         if value >= 0xFFF8 || value == 0 || value == 1 {
             None
         } else {
@@ -147,7 +152,7 @@ impl FatTerritory {
             self.fat_table[offset + 3],
         ]) & 0x0FFFFFFF; // Mask off top 4 bits
 
-        // Check for end of chain markers or invalid clusters
+        // Check for end of chain markers and invalid values
         if value >= 0x0FFFFFF8 || value == 0 || value == 1 {
             None
         } else {
@@ -196,7 +201,7 @@ impl FatTerritory {
         let cluster_bytes = totalimage_core::checked_multiply_u64(
             cluster_offset as u64,
             bytes_per_cluster,
-            "Cluster offset calculation"
+            "Cluster offset calculation",
         )?;
 
         data_offset
@@ -256,7 +261,11 @@ impl FatTerritory {
     }
 
     /// Read directory entries from a cluster chain (for subdirectories and FAT32 root)
-    pub fn read_directory_from_cluster(&self, stream: &mut dyn ReadSeek, start_cluster: u32) -> Result<Vec<DirectoryEntry>> {
+    pub fn read_directory_from_cluster(
+        &self,
+        stream: &mut dyn ReadSeek,
+        start_cluster: u32,
+    ) -> Result<Vec<DirectoryEntry>> {
         if start_cluster < 2 {
             return Ok(Vec::new());
         }
@@ -300,7 +309,8 @@ impl FatTerritory {
                 }
 
                 // Parse regular entry with any accumulated LFN entries
-                if let Some(entry) = DirectoryEntry::from_bytes_with_lfn(&entry_bytes, &pending_lfn) {
+                if let Some(entry) = DirectoryEntry::from_bytes_with_lfn(&entry_bytes, &pending_lfn)
+                {
                     pending_lfn.clear();
 
                     // Skip volume labels and . / .. entries
@@ -338,7 +348,11 @@ impl FatTerritory {
     }
 
     /// List directory contents at a path
-    pub fn list_directory(&self, stream: &mut dyn ReadSeek, path: &str) -> Result<Vec<OccupantInfo>> {
+    pub fn list_directory(
+        &self,
+        stream: &mut dyn ReadSeek,
+        path: &str,
+    ) -> Result<Vec<OccupantInfo>> {
         let entries = self.read_directory_at_path(stream, path)?;
 
         Ok(entries
@@ -356,7 +370,11 @@ impl FatTerritory {
     }
 
     /// Read directory entries at a given path
-    pub fn read_directory_at_path(&self, stream: &mut dyn ReadSeek, path: &str) -> Result<Vec<DirectoryEntry>> {
+    pub fn read_directory_at_path(
+        &self,
+        stream: &mut dyn ReadSeek,
+        path: &str,
+    ) -> Result<Vec<DirectoryEntry>> {
         let path = path.trim_matches('/').trim_matches('\\');
 
         // Root directory
@@ -374,7 +392,9 @@ impl FatTerritory {
             // Find the directory entry matching this path component
             let dir_entry = current_entries
                 .iter()
-                .find(|e| e.name.eq_ignore_ascii_case(part) && (e.is_directory() || i == parts.len() - 1))
+                .find(|e| {
+                    e.name.eq_ignore_ascii_case(part) && (e.is_directory() || i == parts.len() - 1)
+                })
                 .ok_or_else(|| Error::not_found(format!("Path component not found: {}", part)))?;
 
             if i == parts.len() - 1 {
@@ -390,7 +410,8 @@ impl FatTerritory {
                 if !dir_entry.is_directory() {
                     return Err(Error::not_found(format!("Not a directory: {}", part)));
                 }
-                current_entries = self.read_directory_from_cluster(stream, dir_entry.first_cluster())?;
+                current_entries =
+                    self.read_directory_from_cluster(stream, dir_entry.first_cluster())?;
             }
         }
 
@@ -398,7 +419,11 @@ impl FatTerritory {
     }
 
     /// Find a file in the root directory by name
-    pub fn find_file_in_root(&self, stream: &mut dyn ReadSeek, name: &str) -> Result<DirectoryEntry> {
+    pub fn find_file_in_root(
+        &self,
+        stream: &mut dyn ReadSeek,
+        name: &str,
+    ) -> Result<DirectoryEntry> {
         let entries = self.read_root_directory(stream)?;
 
         for entry in entries {
@@ -411,7 +436,11 @@ impl FatTerritory {
     }
 
     /// Find a file by path (supports subdirectories)
-    pub fn find_file_by_path(&self, stream: &mut dyn ReadSeek, path: &str) -> Result<DirectoryEntry> {
+    pub fn find_file_by_path(
+        &self,
+        stream: &mut dyn ReadSeek,
+        path: &str,
+    ) -> Result<DirectoryEntry> {
         let path = path.trim_matches('/').trim_matches('\\');
 
         if path.is_empty() {
@@ -439,7 +468,8 @@ impl FatTerritory {
                 if !entry.is_directory() {
                     return Err(Error::not_found(format!("Not a directory: {}", part)));
                 }
-                current_entries = self.read_directory_from_cluster(stream, entry.first_cluster())?;
+                current_entries =
+                    self.read_directory_from_cluster(stream, entry.first_cluster())?;
             }
         }
 
@@ -450,7 +480,11 @@ impl FatTerritory {
     ///
     /// # Security
     /// Validates file size and uses checked arithmetic
-    pub fn read_file_data(&self, stream: &mut dyn ReadSeek, entry: &DirectoryEntry) -> Result<Vec<u8>> {
+    pub fn read_file_data(
+        &self,
+        stream: &mut dyn ReadSeek,
+        entry: &DirectoryEntry,
+    ) -> Result<Vec<u8>> {
         let first_cluster = entry.first_cluster();
 
         // Special case: empty files or files in root directory with cluster 0
@@ -531,8 +565,9 @@ impl Territory for FatTerritory {
         totalimage_core::checked_multiply_u32_to_u64(
             self.bpb.total_sectors(),
             self.bpb.bytes_per_sector as u32,
-            "Domain size"
-        ).unwrap_or(0)
+            "Domain size",
+        )
+        .unwrap_or(0)
     }
 
     fn liberated_space(&self) -> u64 {
@@ -734,7 +769,9 @@ mod tests {
         assert!(root_entries[0].is_directory());
 
         // Test navigating to subdirectory
-        let subdir_entries = territory.read_directory_at_path(&mut cursor, "SUBDIR").unwrap();
+        let subdir_entries = territory
+            .read_directory_at_path(&mut cursor, "SUBDIR")
+            .unwrap();
         assert_eq!(subdir_entries.len(), 1);
         assert_eq!(subdir_entries[0].name, "NESTED.TXT");
     }
@@ -769,7 +806,9 @@ mod tests {
         let territory = FatTerritory::parse(&mut cursor).unwrap();
 
         // Find file by path
-        let entry = territory.find_file_by_path(&mut cursor, "DOCS/README.TXT").unwrap();
+        let entry = territory
+            .find_file_by_path(&mut cursor, "DOCS/README.TXT")
+            .unwrap();
         assert_eq!(entry.name, "README.TXT");
         assert_eq!(entry.file_size, 100);
     }

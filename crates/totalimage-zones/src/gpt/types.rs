@@ -14,26 +14,26 @@ impl PartitionTypeGuid {
 
     /// EFI System Partition
     pub const EFI_SYSTEM: Self = Self([
-        0x28, 0x73, 0x2a, 0xc1, 0x1f, 0xf8, 0xd2, 0x11,
-        0xba, 0x4b, 0x00, 0xa0, 0xc9, 0x3e, 0xc9, 0x3b,
+        0x28, 0x73, 0x2a, 0xc1, 0x1f, 0xf8, 0xd2, 0x11, 0xba, 0x4b, 0x00, 0xa0, 0xc9, 0x3e, 0xc9,
+        0x3b,
     ]);
 
     /// Microsoft Basic Data (FAT, NTFS, exFAT)
     pub const MICROSOFT_BASIC_DATA: Self = Self([
-        0xa2, 0xa0, 0xd0, 0xeb, 0xe5, 0xb9, 0x33, 0x44,
-        0x87, 0xc0, 0x68, 0xb6, 0xb7, 0x26, 0x99, 0xc7,
+        0xa2, 0xa0, 0xd0, 0xeb, 0xe5, 0xb9, 0x33, 0x44, 0x87, 0xc0, 0x68, 0xb6, 0xb7, 0x26, 0x99,
+        0xc7,
     ]);
 
     /// Linux filesystem
     pub const LINUX_FILESYSTEM: Self = Self([
-        0xaf, 0x3d, 0xc6, 0x0f, 0x83, 0x84, 0x72, 0x47,
-        0x8e, 0x79, 0x3d, 0x69, 0xd8, 0x47, 0x7d, 0xe4,
+        0xaf, 0x3d, 0xc6, 0x0f, 0x83, 0x84, 0x72, 0x47, 0x8e, 0x79, 0x3d, 0x69, 0xd8, 0x47, 0x7d,
+        0xe4,
     ]);
 
     /// Linux swap
     pub const LINUX_SWAP: Self = Self([
-        0x6d, 0xfd, 0x57, 0x06, 0xab, 0xa4, 0xc4, 0x43,
-        0x84, 0xe5, 0x09, 0x33, 0xc8, 0x4b, 0x4f, 0x4f,
+        0x6d, 0xfd, 0x57, 0x06, 0xab, 0xa4, 0xc4, 0x43, 0x84, 0xe5, 0x09, 0x33, 0xc8, 0x4b, 0x4f,
+        0x4f,
     ]);
 
     /// Get a human-readable name for this partition type
@@ -93,18 +93,15 @@ impl GptPartitionEntry {
 
         // Parse LBA values (bytes 32-47)
         let first_lba = u64::from_le_bytes([
-            bytes[32], bytes[33], bytes[34], bytes[35],
-            bytes[36], bytes[37], bytes[38], bytes[39],
+            bytes[32], bytes[33], bytes[34], bytes[35], bytes[36], bytes[37], bytes[38], bytes[39],
         ]);
         let last_lba = u64::from_le_bytes([
-            bytes[40], bytes[41], bytes[42], bytes[43],
-            bytes[44], bytes[45], bytes[46], bytes[47],
+            bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
         ]);
 
         // Parse attributes (bytes 48-55)
         let attributes = u64::from_le_bytes([
-            bytes[48], bytes[49], bytes[50], bytes[51],
-            bytes[52], bytes[53], bytes[54], bytes[55],
+            bytes[48], bytes[49], bytes[50], bytes[51], bytes[52], bytes[53], bytes[54], bytes[55],
         ]);
 
         // Parse partition name (bytes 56-127, UTF-16LE)
@@ -221,20 +218,16 @@ impl GptHeader {
 
         // Parse LBA values
         let current_lba = u64::from_le_bytes([
-            bytes[24], bytes[25], bytes[26], bytes[27],
-            bytes[28], bytes[29], bytes[30], bytes[31],
+            bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29], bytes[30], bytes[31],
         ]);
         let backup_lba = u64::from_le_bytes([
-            bytes[32], bytes[33], bytes[34], bytes[35],
-            bytes[36], bytes[37], bytes[38], bytes[39],
+            bytes[32], bytes[33], bytes[34], bytes[35], bytes[36], bytes[37], bytes[38], bytes[39],
         ]);
         let first_usable_lba = u64::from_le_bytes([
-            bytes[40], bytes[41], bytes[42], bytes[43],
-            bytes[44], bytes[45], bytes[46], bytes[47],
+            bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45], bytes[46], bytes[47],
         ]);
         let last_usable_lba = u64::from_le_bytes([
-            bytes[48], bytes[49], bytes[50], bytes[51],
-            bytes[52], bytes[53], bytes[54], bytes[55],
+            bytes[48], bytes[49], bytes[50], bytes[51], bytes[52], bytes[53], bytes[54], bytes[55],
         ]);
 
         // Parse disk GUID (bytes 56-71)
@@ -243,12 +236,13 @@ impl GptHeader {
 
         // Parse partition entries info
         let partition_entries_lba = u64::from_le_bytes([
-            bytes[72], bytes[73], bytes[74], bytes[75],
-            bytes[76], bytes[77], bytes[78], bytes[79],
+            bytes[72], bytes[73], bytes[74], bytes[75], bytes[76], bytes[77], bytes[78], bytes[79],
         ]);
-        let num_partition_entries = u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]);
+        let num_partition_entries =
+            u32::from_le_bytes([bytes[80], bytes[81], bytes[82], bytes[83]]);
         let partition_entry_size = u32::from_le_bytes([bytes[84], bytes[85], bytes[86], bytes[87]]);
-        let partition_entries_crc32 = u32::from_le_bytes([bytes[88], bytes[89], bytes[90], bytes[91]]);
+        let partition_entries_crc32 =
+            u32::from_le_bytes([bytes[88], bytes[89], bytes[90], bytes[91]]);
 
         Some(Self {
             signature,
@@ -303,7 +297,8 @@ impl GptHeader {
     /// # Arguments
     /// * `partition_entries_bytes` - The raw partition entries array
     pub fn verify_partition_entries_crc32(&self, partition_entries_bytes: &[u8]) -> bool {
-        let expected_size = self.num_partition_entries as usize * self.partition_entry_size as usize;
+        let expected_size =
+            self.num_partition_entries as usize * self.partition_entry_size as usize;
 
         if partition_entries_bytes.len() < expected_size {
             return false;
@@ -324,7 +319,10 @@ mod tests {
     fn test_partition_type_guid_names() {
         assert_eq!(PartitionTypeGuid::UNUSED.name(), "Unused");
         assert_eq!(PartitionTypeGuid::EFI_SYSTEM.name(), "EFI System");
-        assert_eq!(PartitionTypeGuid::LINUX_FILESYSTEM.name(), "Linux filesystem");
+        assert_eq!(
+            PartitionTypeGuid::LINUX_FILESYSTEM.name(),
+            "Linux filesystem"
+        );
     }
 
     #[test]

@@ -79,12 +79,12 @@ impl BothEndian<u32> {
 /// ISO-9660 date/time format (7 bytes)
 #[derive(Debug, Clone, Copy)]
 pub struct IsoDateTime {
-    pub year: u8,      // Years since 1900
-    pub month: u8,     // 1-12
-    pub day: u8,       // 1-31
-    pub hour: u8,      // 0-23
-    pub minute: u8,    // 0-59
-    pub second: u8,    // 0-59
+    pub year: u8,       // Years since 1900
+    pub month: u8,      // 1-12
+    pub day: u8,        // 1-31
+    pub hour: u8,       // 0-23
+    pub minute: u8,     // 0-59
+    pub second: u8,     // 0-59
     pub gmt_offset: i8, // GMT offset in 15-minute intervals
 }
 
@@ -109,14 +109,14 @@ impl IsoDateTime {
 /// ISO-9660 ASCII date/time format (17 bytes)
 #[derive(Debug, Clone)]
 pub struct IsoAsciiDateTime {
-    pub year: [u8; 4],     // YYYY
-    pub month: [u8; 2],    // MM
-    pub day: [u8; 2],      // DD
-    pub hour: [u8; 2],     // HH
-    pub minute: [u8; 2],   // MM
-    pub second: [u8; 2],   // SS
+    pub year: [u8; 4],       // YYYY
+    pub month: [u8; 2],      // MM
+    pub day: [u8; 2],        // DD
+    pub hour: [u8; 2],       // HH
+    pub minute: [u8; 2],     // MM
+    pub second: [u8; 2],     // SS
     pub hundredths: [u8; 2], // Hundredths of second
-    pub gmt_offset: i8,    // GMT offset in 15-minute intervals
+    pub gmt_offset: i8,      // GMT offset in 15-minute intervals
 }
 
 impl IsoAsciiDateTime {
@@ -158,17 +158,17 @@ impl IsoAsciiDateTime {
 #[derive(Debug, Clone)]
 pub struct PrimaryVolumeDescriptor {
     pub descriptor_type: u8,
-    pub identifier: [u8; 5],           // "CD001"
+    pub identifier: [u8; 5], // "CD001"
     pub version: u8,
     pub system_identifier: [u8; 32],
     pub volume_identifier: [u8; 32],
-    pub volume_space_size: BothEndian<u32>,  // Total number of logical blocks
+    pub volume_space_size: BothEndian<u32>, // Total number of logical blocks
     pub volume_set_size: BothEndian<u16>,
     pub volume_sequence_number: BothEndian<u16>,
     pub logical_block_size: BothEndian<u16>, // Usually 2048
     pub path_table_size: BothEndian<u32>,
-    pub l_path_table: u32,                   // Little-endian path table location
-    pub m_path_table: u32,                   // Big-endian path table location
+    pub l_path_table: u32, // Little-endian path table location
+    pub m_path_table: u32, // Big-endian path table location
     pub root_directory_record: DirectoryRecord,
     pub volume_set_identifier: [u8; 128],
     pub publisher_identifier: [u8; 128],
@@ -287,17 +287,17 @@ impl PrimaryVolumeDescriptor {
 /// Directory Record (variable length)
 #[derive(Debug, Clone)]
 pub struct DirectoryRecord {
-    pub length: u8,                        // Length of this record
+    pub length: u8, // Length of this record
     pub extended_attr_length: u8,
-    pub extent_location: BothEndian<u32>,  // LBA of file data
-    pub data_length: BothEndian<u32>,      // Size of file in bytes
+    pub extent_location: BothEndian<u32>, // LBA of file data
+    pub data_length: BothEndian<u32>,     // Size of file in bytes
     pub recording_date: IsoDateTime,
-    pub file_flags: u8,                    // Bit flags (hidden, directory, etc.)
+    pub file_flags: u8, // Bit flags (hidden, directory, etc.)
     pub file_unit_size: u8,
     pub interleave_gap_size: u8,
     pub volume_sequence_number: BothEndian<u16>,
     pub file_identifier_length: u8,
-    pub file_identifier: Vec<u8>,          // File name (variable length)
+    pub file_identifier: Vec<u8>, // File name (variable length)
     pub rock_ridge: Option<crate::iso::rockridge::RockRidgeExtensions>, // Rock Ridge extensions
 }
 
@@ -353,7 +353,7 @@ impl DirectoryRecord {
         // Parse Rock Ridge extensions from System Use area
         // System Use area starts after file identifier + padding to even offset
         let mut system_use_start = id_end;
-        if system_use_start % 2 != 0 {
+        if !system_use_start.is_multiple_of(2) {
             system_use_start += 1; // Pad to even byte
         }
 
@@ -443,9 +443,18 @@ mod tests {
 
     #[test]
     fn test_volume_descriptor_type() {
-        assert_eq!(VolumeDescriptorType::from_u8(0), Some(VolumeDescriptorType::BootRecord));
-        assert_eq!(VolumeDescriptorType::from_u8(1), Some(VolumeDescriptorType::PrimaryVolumeDescriptor));
-        assert_eq!(VolumeDescriptorType::from_u8(255), Some(VolumeDescriptorType::VolumeDescriptorSetTerminator));
+        assert_eq!(
+            VolumeDescriptorType::from_u8(0),
+            Some(VolumeDescriptorType::BootRecord)
+        );
+        assert_eq!(
+            VolumeDescriptorType::from_u8(1),
+            Some(VolumeDescriptorType::PrimaryVolumeDescriptor)
+        );
+        assert_eq!(
+            VolumeDescriptorType::from_u8(255),
+            Some(VolumeDescriptorType::VolumeDescriptorSetTerminator)
+        );
         assert_eq!(VolumeDescriptorType::from_u8(99), None);
     }
 

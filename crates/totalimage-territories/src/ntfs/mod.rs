@@ -26,12 +26,12 @@
 //! println!("Filesystem: {}", territory.identify());
 //! ```
 
-pub mod types;
 pub mod lznt1;
+pub mod types;
 
-use std::io::{Read, Seek, SeekFrom};
-use ntfs::{Ntfs, NtfsFile, NtfsReadSeek};
 use ntfs::structured_values::NtfsFileNamespace;
+use ntfs::{Ntfs, NtfsFile, NtfsReadSeek};
+use std::io::{Read, Seek, SeekFrom};
 use totalimage_core::{DirectoryCell, Error, OccupantInfo, Result, Territory};
 use types::{ntfs_time_to_datetime, NtfsVolumeInfo};
 
@@ -67,7 +67,8 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
     /// filesystem without worrying about data corruption.
     pub fn parse(mut reader: T) -> Result<Self> {
         // Seek to start of volume
-        reader.seek(SeekFrom::Start(0))
+        reader
+            .seek(SeekFrom::Start(0))
             .map_err(|e| Error::invalid_territory(format!("IO error: {}", e)))?;
 
         // Parse NTFS structure
@@ -95,11 +96,7 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
             sector_size,
         };
 
-        let identifier = format!(
-            "NTFS v{}.{} filesystem",
-            major_version,
-            minor_version
-        );
+        let identifier = format!("NTFS v{}.{} filesystem", major_version, minor_version);
 
         Ok(Self {
             ntfs,
@@ -136,18 +133,24 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
         let ntfs = &self.ntfs;
         let reader = &mut self.reader;
 
-        let root_dir = ntfs.root_directory(reader)
+        let root_dir = ntfs
+            .root_directory(reader)
             .map_err(|e| Error::invalid_territory(format!("Cannot read root directory: {}", e)))?;
 
         Self::read_directory_entries_static(ntfs, reader, &root_dir)
     }
 
     /// Read directory entries from an NTFS file (directory) - static version
-    fn read_directory_entries_static(_ntfs: &Ntfs, reader: &mut T, dir: &NtfsFile) -> Result<Vec<OccupantInfo>> {
+    fn read_directory_entries_static(
+        _ntfs: &Ntfs,
+        reader: &mut T,
+        dir: &NtfsFile,
+    ) -> Result<Vec<OccupantInfo>> {
         let mut entries = Vec::new();
 
         // Get the directory index
-        let index = dir.directory_index(reader)
+        let index = dir
+            .directory_index(reader)
             .map_err(|e| Error::invalid_territory(format!("Cannot read directory index: {}", e)))?;
 
         let mut iter = index.entries();
@@ -204,12 +207,10 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
         }
 
         // Sort entries: directories first, then alphabetically
-        entries.sort_by(|a, b| {
-            match (a.is_directory, b.is_directory) {
-                (true, false) => std::cmp::Ordering::Less,
-                (false, true) => std::cmp::Ordering::Greater,
-                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            }
+        entries.sort_by(|a, b| match (a.is_directory, b.is_directory) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
         });
 
         Ok(entries)
@@ -223,7 +224,8 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
         let reader = &mut self.reader;
 
         if path.is_empty() {
-            return ntfs.root_directory(reader)
+            return ntfs
+                .root_directory(reader)
                 .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)));
         }
 
@@ -231,11 +233,13 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
         use totalimage_core::validate_fs_path_components;
         let parts = validate_fs_path_components(path)?;
 
-        let mut current = ntfs.root_directory(reader)
+        let mut current = ntfs
+            .root_directory(reader)
             .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)))?;
 
         for part in parts {
-            let index = current.directory_index(reader)
+            let index = current
+                .directory_index(reader)
                 .map_err(|e| Error::not_found(format!("Cannot read directory: {}", e)))?;
 
             // Search through entries for matching name
@@ -257,8 +261,10 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
                 }
             }
 
-            let file_ref = found_ref.ok_or_else(|| Error::not_found(format!("Path component not found: {}", part)))?;
-            current = file_ref.to_file(ntfs, reader)
+            let file_ref = found_ref
+                .ok_or_else(|| Error::not_found(format!("Path component not found: {}", part)))?;
+            current = file_ref
+                .to_file(ntfs, reader)
                 .map_err(|e| Error::not_found(format!("Cannot read file '{}': {}", part, e)))?;
         }
 
@@ -280,11 +286,13 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
             use totalimage_core::validate_fs_path_components;
             let parts = validate_fs_path_components(path)?;
 
-            let mut current = ntfs.root_directory(reader)
+            let mut current = ntfs
+                .root_directory(reader)
                 .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)))?;
 
             for part in parts {
-                let index = current.directory_index(reader)
+                let index = current
+                    .directory_index(reader)
                     .map_err(|e| Error::not_found(format!("Cannot read directory: {}", e)))?;
 
                 // Search through entries for matching name
@@ -306,8 +314,11 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
                     }
                 }
 
-                let file_ref = found_ref.ok_or_else(|| Error::not_found(format!("Path component not found: {}", part)))?;
-                current = file_ref.to_file(ntfs, reader)
+                let file_ref = found_ref.ok_or_else(|| {
+                    Error::not_found(format!("Path component not found: {}", part))
+                })?;
+                current = file_ref
+                    .to_file(ntfs, reader)
                     .map_err(|e| Error::not_found(format!("Cannot read file '{}': {}", part, e)))?;
             }
             current
@@ -335,11 +346,13 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
             use totalimage_core::validate_fs_path_components;
             let parts = validate_fs_path_components(path)?;
 
-            let mut current = ntfs.root_directory(reader)
+            let mut current = ntfs
+                .root_directory(reader)
                 .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)))?;
 
             for part in parts {
-                let index = current.directory_index(reader)
+                let index = current
+                    .directory_index(reader)
                     .map_err(|e| Error::not_found(format!("Cannot read directory: {}", e)))?;
 
                 let mut iter = index.entries();
@@ -360,8 +373,11 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
                     }
                 }
 
-                let file_ref = found_ref.ok_or_else(|| Error::not_found(format!("Path component not found: {}", part)))?;
-                current = file_ref.to_file(ntfs, reader)
+                let file_ref = found_ref.ok_or_else(|| {
+                    Error::not_found(format!("Path component not found: {}", part))
+                })?;
+                current = file_ref
+                    .to_file(ntfs, reader)
                     .map_err(|e| Error::not_found(format!("Cannot read file '{}': {}", part, e)))?;
             }
             current
@@ -393,11 +409,14 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
 
         // Get the $DATA attribute (unnamed = main data stream)
         let data_item = match file.data(reader, "") {
-            Some(result) => result.map_err(|e| Error::invalid_territory(format!("Cannot read $DATA: {}", e)))?,
+            Some(result) => {
+                result.map_err(|e| Error::invalid_territory(format!("Cannot read $DATA: {}", e)))?
+            }
             None => return Err(Error::not_found("File has no data".to_string())),
         };
 
-        let data_attr = data_item.to_attribute()
+        let data_attr = data_item
+            .to_attribute()
             .map_err(|e| Error::invalid_territory(format!("Cannot read data attribute: {}", e)))?;
 
         // Check file size against extraction limit
@@ -412,10 +431,12 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
 
         // Read uncompressed data
         let mut data = vec![0u8; data_size as usize];
-        let mut value_reader = data_attr.value(reader)
+        let mut value_reader = data_attr
+            .value(reader)
             .map_err(|e| Error::invalid_territory(format!("Cannot open data stream: {}", e)))?;
 
-        value_reader.read_exact(reader, &mut data)
+        value_reader
+            .read_exact(reader, &mut data)
             .map_err(|e| Error::invalid_territory(format!("Cannot read data: {}", e)))?;
 
         Ok(data)
@@ -437,11 +458,13 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
             use totalimage_core::validate_fs_path_components;
             let parts = validate_fs_path_components(path)?;
 
-            let mut current = ntfs.root_directory(reader)
+            let mut current = ntfs
+                .root_directory(reader)
                 .map_err(|e| Error::not_found(format!("Cannot read root: {}", e)))?;
 
             for part in parts {
-                let index = current.directory_index(reader)
+                let index = current
+                    .directory_index(reader)
                     .map_err(|e| Error::not_found(format!("Cannot read directory: {}", e)))?;
 
                 let mut iter = index.entries();
@@ -462,8 +485,11 @@ impl<T: Read + Seek + Send + Sync> NtfsTerritory<T> {
                     }
                 }
 
-                let file_ref = found_ref.ok_or_else(|| Error::not_found(format!("Path component not found: {}", part)))?;
-                current = file_ref.to_file(ntfs, reader)
+                let file_ref = found_ref.ok_or_else(|| {
+                    Error::not_found(format!("Path component not found: {}", part))
+                })?;
+                current = file_ref
+                    .to_file(ntfs, reader)
                     .map_err(|e| Error::not_found(format!("Cannot read file '{}': {}", part, e)))?;
             }
             current
@@ -504,7 +530,11 @@ impl<T: Read + Seek + Send + Sync + 'static> Territory for NtfsTerritory<T> {
     }
 
     fn banner(&self) -> Result<String> {
-        Ok(self.volume_info.label.clone().unwrap_or_else(|| "NTFS".to_string()))
+        Ok(self
+            .volume_info
+            .label
+            .clone()
+            .unwrap_or_else(|| "NTFS".to_string()))
     }
 
     fn headquarters(&self) -> Result<Box<dyn DirectoryCell>> {
@@ -551,7 +581,9 @@ impl DirectoryCell for NtfsRootDirectory {
     }
 
     fn enter(&self, _name: &str) -> Result<Box<dyn DirectoryCell>> {
-        Err(Error::not_found("Subdirectory navigation not available".to_string()))
+        Err(Error::not_found(
+            "Subdirectory navigation not available".to_string(),
+        ))
     }
 }
 

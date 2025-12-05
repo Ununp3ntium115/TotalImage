@@ -68,7 +68,7 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            ttl_seconds: 30 * 24 * 60 * 60, // 30 days
+            ttl_seconds: 30 * 24 * 60 * 60,    // 30 days
             max_size_bytes: 100 * 1024 * 1024, // 100 MB
         }
     }
@@ -106,20 +106,14 @@ impl PlatformDatabase {
     }
 
     /// Store a value in the cache
-    pub fn set<T: Serialize>(
-        &self,
-        key: &str,
-        value: &T,
-        tool: &str,
-        version: &str,
-    ) -> Result<()> {
+    pub fn set<T: Serialize>(&self, key: &str, value: &T, tool: &str, version: &str) -> Result<()> {
         let entry = CacheEntry::new(value, tool, version);
         let encoded = bincode::serialize(&entry)?;
 
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::other(
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let write_txn = db.begin_write()?;
         {
@@ -135,9 +129,9 @@ impl PlatformDatabase {
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         let expired = {
             let db = self.db.lock().map_err(|_| {
-                Error::Database(redb::Error::Io(std::io::Error::other(
+                Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                     "Lock poisoned",
-                )))
+                ))))
             })?;
             let read_txn = db.begin_read()?;
             let table = read_txn.open_table(CACHE_TABLE)?;
@@ -168,9 +162,9 @@ impl PlatformDatabase {
     /// Remove a value from the cache
     pub fn remove(&self, key: &str) -> Result<()> {
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::other(
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let write_txn = db.begin_write()?;
         {
@@ -187,9 +181,9 @@ impl PlatformDatabase {
         let encoded = bincode::serialize(tool_info)?;
 
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::other(
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let write_txn = db.begin_write()?;
         {
@@ -205,9 +199,9 @@ impl PlatformDatabase {
     /// Get all registered tools from database
     pub fn get_registered_tools(&self) -> Result<Vec<crate::ToolInfo>> {
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::other(
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let read_txn = db.begin_read()?;
         let table = read_txn.open_table(TOOL_REGISTRY_TABLE)?;
@@ -241,16 +235,13 @@ impl PlatformDatabase {
                 .as_secs(),
         };
 
-        let key = format!(
-            "{}:{}:{}",
-            log_entry.timestamp, tool_name, method
-        );
+        let key = format!("{}:{}:{}", log_entry.timestamp, tool_name, method);
         let encoded = bincode::serialize(&log_entry)?;
 
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::other(
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let write_txn = db.begin_write()?;
         {
@@ -265,9 +256,9 @@ impl PlatformDatabase {
     /// Get database statistics
     pub fn stats(&self) -> Result<DatabaseStats> {
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::other(
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let read_txn = db.begin_read()?;
 

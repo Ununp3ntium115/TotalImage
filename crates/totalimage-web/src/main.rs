@@ -32,6 +32,7 @@ use totalimage_core::{
     ZoneTable,
 };
 use totalimage_mcp::{auth_middleware, AuthConfig};
+use totalimage_pipeline::PartialPipeline;
 use totalimage_territories::{FatTerritory, IsoTerritory, NtfsTerritory};
 use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
@@ -39,7 +40,6 @@ use tower::ServiceBuilder;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::{
     cors::{Any, CorsLayer},
-    limit::RequestBodyLimitLayer,
     timeout::TimeoutLayer,
     trace::TraceLayer,
 };
@@ -167,6 +167,7 @@ async fn main() {
         .route("/api/vault/info", get(vault_info))
         .route("/api/vault/zones", get(vault_zones))
         .route("/api/vault/files", get(vault_files))
+        .route("/api/vault/extract", get(vault_extract))
         .route_layer(middleware::from_fn_with_state(auth_config.clone(), auth_middleware));
 
     // Configure request body limit (10 MB default)
@@ -224,6 +225,7 @@ async fn main() {
     println!("   - GET  /api/vault/info?path=<image_file>    Vault metadata");
     println!("   - GET  /api/vault/zones?path=<image_file>   Partition listing");
     println!("   - GET  /api/vault/files?path=<img>&zone=N   File listing");
+    println!("   - GET  /api/vault/extract?path=<img>&zone=N&file=<path>   Extract file");
 
     if use_tls {
         // Start server with TLS
@@ -578,7 +580,7 @@ async fn vault_files(
     tracing::info!("Cache MISS for files: {}", cache_key);
 
     // Get file listing
-    match get_vault_files(&params.path, zone_index, params.offset, params.limit) {
+    match get_vault_files(&params.path, zone_index, params.offset, params.limit, &state.allowed_roots) {
         Ok(files) => {
             // Store in cache
             if let Err(e) = state.cache.set_dir_listing(&cache_key, &files) {
@@ -601,9 +603,10 @@ fn get_vault_files(
     zone_index: usize,
     offset: usize,
     limit: usize,
+    allowed_roots: &[PathBuf],
 ) -> TotalImageResult<VaultFilesResponse> {
     // Validate path to prevent path traversal attacks
-    let path = validate_file_path(image_path)?;
+    let path = validate_file_path(image_path, allowed_roots)?;
     let mut vault = open_vault(&path, VaultConfig::default())?;
 
     let sector_size = 512;
@@ -729,6 +732,154 @@ fn build_files_response(
         limit,
         files,
     })
+}
+
+/// Query parameters for file extraction
+#[derive(Deserialize)]
+struct ExtractQuery {
+    path: String,
+    #[serde(default)]
+    zone: Option<usize>,
+    file: String,
+}
+
+/// GET /api/vault/extract?path=<image_file>&zone=<index>&file=<file_path>
+///
+/// Extract a file from a disk image partition.
+/// Returns the file contents as application/octet-stream.
+async fn vault_extract(
+    State(state): State<AppState>,
+    Query(params): Query<ExtractQuery>,
+) -> impl IntoResponse {
+    let zone_index = params.zone.unwrap_or(0);
+
+    tracing::info!(
+        "Extract request: vault={}, zone={}, file={}",
+        params.path,
+        zone_index,
+        params.file
+    );
+
+    // Perform extraction
+    match extract_file_from_vault(&params.path, zone_index, &params.file, &state.allowed_roots) {
+        Ok(data) => {
+            tracing::info!(
+                "Successfully extracted {} bytes from {}",
+                data.len(),
+                params.file
+            );
+
+            // Determine content type from file extension
+            let content_type = mime_guess::from_path(&params.file)
+                .first_or_octet_stream()
+                .to_string();
+
+            // Extract filename for Content-Disposition header
+            let filename = std::path::Path::new(&params.file)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("download.bin");
+
+            (
+                StatusCode::OK,
+                [
+                    (header::CONTENT_TYPE, content_type),
+                    (
+                        header::CONTENT_DISPOSITION,
+                        format!("attachment; filename=\"{}\"", filename),
+                    ),
+                    (header::CONTENT_LENGTH, data.len().to_string()),
+                ],
+                data,
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Extraction failed: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": e.to_string()
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
+fn extract_file_from_vault(
+    image_path: &str,
+    zone_index: usize,
+    file_path: &str,
+    allowed_roots: &[PathBuf],
+) -> TotalImageResult<Vec<u8>> {
+    use std::io::Read;
+
+    // Validate vault path to prevent path traversal attacks
+    let path = validate_file_path(image_path, allowed_roots)?;
+    let mut vault = open_vault(&path, VaultConfig::default())?;
+
+    let sector_size = 512;
+
+    // Find the zone
+    let zone = if let Ok(mbr) = MbrZoneTable::parse(vault.content(), sector_size) {
+        mbr.enumerate_zones().get(zone_index).cloned()
+    } else if let Ok(gpt) = GptZoneTable::parse(vault.content(), sector_size) {
+        gpt.enumerate_zones().get(zone_index).cloned()
+    } else {
+        // Unpartitioned disk - use entire disk as zone 0
+        if zone_index == 0 {
+            Some(totalimage_core::Zone {
+                index: 0,
+                offset: 0,
+                length: vault.length(),
+                zone_type: "Unpartitioned".to_string(),
+                territory_type: None,
+            })
+        } else {
+            None
+        }
+    };
+
+    let zone = zone.ok_or_else(|| {
+        totalimage_core::Error::invalid_operation(format!("Zone {} not found", zone_index))
+    })?;
+
+    // Create partial pipeline for the zone
+    let mut partial = PartialPipeline::new(vault.content(), zone.offset, zone.length)?;
+
+    // Try to parse filesystem and extract file
+    // Try FAT first
+    if let Ok(fat) = FatTerritory::parse(&mut partial) {
+        partial.seek(SeekFrom::Start(0))?;
+        if let Ok(entry) = fat.find_file_in_root(&mut partial, file_path) {
+            let data = fat.read_file_data(&mut partial, &entry)?;
+            return Ok(data);
+        }
+    }
+
+    // Try NTFS
+    partial.seek(SeekFrom::Start(0))?;
+    let zone_data = {
+        let read_size = zone.length.min(64 * 1024 * 1024) as usize;
+        let mut data = vec![0u8; read_size];
+        partial.read_exact(&mut data)?;
+        data
+    };
+
+    let cursor = Cursor::new(zone_data);
+    if let Ok(mut ntfs) = NtfsTerritory::parse(cursor) {
+        if let Ok(data) = ntfs.extract_file(file_path) {
+            return Ok(data);
+        }
+    }
+
+    // TODO: Add exFAT and ISO extraction support
+
+    Err(totalimage_core::Error::invalid_operation(format!(
+        "File not found or filesystem not supported: {}",
+        file_path
+    )))
 }
 
 /// Create AuthConfig from web-specific environment variables

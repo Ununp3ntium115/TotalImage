@@ -6,7 +6,7 @@
 use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::Path;
-use totalimage_core::{Result, Vault, ReadSeek};
+use totalimage_core::{ReadSeek, Result, Vault};
 use totalimage_pipeline::MmapPipeline;
 
 /// Configuration for opening a vault
@@ -160,7 +160,7 @@ mod tests {
         let mut vault = RawVault::from_stream(cursor, 100);
 
         let mut buf = [0u8; 10];
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
 
         assert_eq!(&buf, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
@@ -176,7 +176,7 @@ mod tests {
         vault.content().seek(SeekFrom::Start(50)).unwrap();
 
         let mut buf = [0u8; 5];
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
 
         assert_eq!(&buf, &[50, 51, 52, 53, 54]);
     }
@@ -205,7 +205,7 @@ mod tests {
         let mut vault = RawVault::open(tmpfile.path(), config).unwrap();
 
         let mut buf = [0u8; 10];
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
         assert_eq!(&buf, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
 
@@ -220,7 +220,7 @@ mod tests {
         let mut vault = RawVault::open(tmpfile.path(), config).unwrap();
 
         let mut buf = [0u8; 10];
-        vault.content().read(&mut buf).unwrap();
+        vault.content().read_exact(&mut buf).unwrap();
         assert_eq!(&buf, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     }
 }

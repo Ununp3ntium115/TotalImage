@@ -184,7 +184,7 @@ mod tests {
 
         // Read should start from position 5
         let mut buf = [0u8; 2];
-        partial.read(&mut buf).unwrap();
+        partial.read_exact(&mut buf).unwrap();
         assert_eq!(&buf, &[25, 26]);
 
         // Seek from current
@@ -195,7 +195,7 @@ mod tests {
         partial.seek(SeekFrom::End(-3)).unwrap();
         assert_eq!(partial.position(), 7);
 
-        partial.read(&mut buf).unwrap();
+        partial.read_exact(&mut buf).unwrap();
         assert_eq!(&buf, &[27, 28]);
     }
 

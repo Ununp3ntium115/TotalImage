@@ -117,9 +117,7 @@ pub fn record_tool_duration(tool_name: &str, duration_secs: f64) {
 /// Record cache operation
 pub fn record_cache_operation(hit: bool) {
     let operation = if hit { "hit" } else { "miss" };
-    CACHE_OPERATIONS_TOTAL
-        .with_label_values(&[operation])
-        .inc();
+    CACHE_OPERATIONS_TOTAL.with_label_values(&[operation]).inc();
 }
 
 /// Update cache size metric

@@ -59,6 +59,7 @@ pub struct MCPServer {
     tools: Vec<ToolEnum>,
     /// Cache for tool results
     cache: Arc<ToolCache>,
+    #[allow(dead_code)]
     allowed_roots: Arc<Vec<PathBuf>>,
 }
 
@@ -221,10 +222,9 @@ impl MCPServer {
 
         let app = if auth_enabled {
             tracing::info!("JWT/API key authentication enabled");
-            base_router.merge(mcp_router.layer(middleware::from_fn_with_state(
-                    auth_config,
-                    auth_middleware,
-                )))
+            base_router.merge(
+                mcp_router.layer(middleware::from_fn_with_state(auth_config, auth_middleware)),
+            )
         } else {
             tracing::info!("Authentication disabled (use MCP_AUTH_ENABLED=true to enable)");
             base_router.merge(mcp_router)
@@ -252,14 +252,18 @@ impl MCPServer {
         let client = reqwest::Client::new();
 
         // Build tool methods from our tool definitions
-        let tool_methods: Vec<serde_json::Value> = self.tools.iter().map(|t| {
-            let def = t.definition();
-            json!({
-                "name": def.name,
-                "description": def.description,
-                "input_schema": def.input_schema
+        let tool_methods: Vec<serde_json::Value> = self
+            .tools
+            .iter()
+            .map(|t| {
+                let def = t.definition();
+                json!({
+                    "name": def.name,
+                    "description": def.description,
+                    "input_schema": def.input_schema
+                })
             })
-        }).collect();
+            .collect();
 
         let registration = json!({
             "name": config.tool_name,
@@ -302,9 +306,7 @@ impl MCPServer {
         let result = InitializeResponse {
             protocol_version: MCP_VERSION.to_string(),
             capabilities: ServerCapabilities {
-                tools: Some(ServerToolCapabilities {
-                    list_changed: None,
-                }),
+                tools: Some(ServerToolCapabilities { list_changed: None }),
             },
             server_info: ServerInfo {
                 name: "totalimage-mcp".to_string(),

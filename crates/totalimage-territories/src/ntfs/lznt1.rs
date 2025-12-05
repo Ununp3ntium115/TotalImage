@@ -98,7 +98,7 @@ fn decompress_chunk<R: Read>(input: &mut R) -> Result<Vec<u8>> {
     // Read 2-byte chunk header
     let mut header_bytes = [0u8; 2];
     match input.read_exact(&mut header_bytes) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
             // End of data
             return Ok(Vec::new());
@@ -285,7 +285,10 @@ mod tests {
         let result = decompress_chunk(&mut cursor);
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Lznt1Error::InvalidChunkHeader));
+        assert!(matches!(
+            result.unwrap_err(),
+            Lznt1Error::InvalidChunkHeader
+        ));
     }
 
     #[test]

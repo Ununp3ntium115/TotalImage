@@ -164,7 +164,10 @@ impl ExfatTerritory {
     }
 
     /// Read root directory entries
-    pub fn read_root_directory<R: Read + Seek>(&self, reader: &mut R) -> Result<Vec<ExfatDirectoryEntry>> {
+    pub fn read_root_directory<R: Read + Seek>(
+        &self,
+        reader: &mut R,
+    ) -> Result<Vec<ExfatDirectoryEntry>> {
         self.read_directory_from_cluster(reader, self.root_dir_cluster)
     }
 
@@ -202,7 +205,8 @@ impl ExfatTerritory {
                         i += 32;
                         continue;
                     }
-                    let stream_entry = StreamExtensionEntry::parse(&dir_data[stream_offset..stream_offset + 32])?;
+                    let stream_entry =
+                        StreamExtensionEntry::parse(&dir_data[stream_offset..stream_offset + 32])?;
 
                     // Parse file name entries
                     let mut name = String::new();
@@ -214,7 +218,8 @@ impl ExfatTerritory {
                         if dir_data[name_offset] != 0xC1 {
                             break;
                         }
-                        let name_entry = FileNameEntry::parse(&dir_data[name_offset..name_offset + 32])?;
+                        let name_entry =
+                            FileNameEntry::parse(&dir_data[name_offset..name_offset + 32])?;
 
                         for &ch in &name_entry.file_name {
                             if ch == 0 || chars_collected >= name_length {
@@ -251,7 +256,11 @@ impl ExfatTerritory {
     }
 
     /// Read file contents
-    pub fn read_file<R: Read + Seek>(&self, reader: &mut R, entry: &ExfatDirectoryEntry) -> Result<Vec<u8>> {
+    pub fn read_file<R: Read + Seek>(
+        &self,
+        reader: &mut R,
+        entry: &ExfatDirectoryEntry,
+    ) -> Result<Vec<u8>> {
         if entry.is_directory() {
             return Err(totalimage_core::Error::invalid_territory(
                 "Cannot read directory as file",
@@ -272,9 +281,7 @@ impl ExfatTerritory {
         entry: &ExfatDirectoryEntry,
     ) -> Result<Vec<ExfatDirectoryEntry>> {
         if !entry.is_directory() {
-            return Err(totalimage_core::Error::invalid_territory(
-                "Not a directory",
-            ));
+            return Err(totalimage_core::Error::invalid_territory("Not a directory"));
         }
 
         self.read_directory_from_cluster(reader, entry.first_cluster)
@@ -333,7 +340,10 @@ impl Territory for ExfatTerritory {
     }
 
     fn banner(&self) -> Result<String> {
-        Ok(self.volume_label.clone().unwrap_or_else(|| "EXFAT".to_string()))
+        Ok(self
+            .volume_label
+            .clone()
+            .unwrap_or_else(|| "EXFAT".to_string()))
     }
 
     fn headquarters(&self) -> Result<Box<dyn DirectoryCell>> {
@@ -453,7 +463,7 @@ mod tests {
             volume_serial: 0x12345678,
             fs_revision: 0x0100,
             volume_flags: 0,
-            bytes_per_sector_shift: 9,  // 512 bytes/sector
+            bytes_per_sector_shift: 9,    // 512 bytes/sector
             sectors_per_cluster_shift: 3, // 8 sectors/cluster
             number_of_fats: 1,
             drive_select: 0x80,

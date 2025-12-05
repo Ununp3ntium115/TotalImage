@@ -86,10 +86,7 @@ pub enum AuthConfig {
 
     /// API key authentication
     #[serde(rename = "api_key")]
-    ApiKey {
-        header: String,
-        key: String,
-    },
+    ApiKey { header: String, key: String },
 }
 
 /// A registered tool in the registry
@@ -121,9 +118,10 @@ impl ToolRegistry {
 
     /// Register a tool
     pub fn register(&self, info: ToolInfo) -> Result<()> {
-        let mut tools = self.tools.write().map_err(|_| {
-            Error::InvalidConfig("Registry lock poisoned".to_string())
-        })?;
+        let mut tools = self
+            .tools
+            .write()
+            .map_err(|_| Error::InvalidConfig("Registry lock poisoned".to_string()))?;
 
         if tools.contains_key(&info.name) {
             return Err(Error::ToolAlreadyRegistered(info.name.clone()));
@@ -147,9 +145,10 @@ impl ToolRegistry {
 
     /// Unregister a tool
     pub fn unregister(&self, name: &str) -> Result<()> {
-        let mut tools = self.tools.write().map_err(|_| {
-            Error::InvalidConfig("Registry lock poisoned".to_string())
-        })?;
+        let mut tools = self
+            .tools
+            .write()
+            .map_err(|_| Error::InvalidConfig("Registry lock poisoned".to_string()))?;
 
         if tools.remove(name).is_none() {
             return Err(Error::ToolNotFound(name.to_string()));
@@ -161,9 +160,10 @@ impl ToolRegistry {
 
     /// Get a tool by name
     pub fn get(&self, name: &str) -> Result<RegisteredTool> {
-        let tools = self.tools.read().map_err(|_| {
-            Error::InvalidConfig("Registry lock poisoned".to_string())
-        })?;
+        let tools = self
+            .tools
+            .read()
+            .map_err(|_| Error::InvalidConfig("Registry lock poisoned".to_string()))?;
 
         tools
             .get(name)
@@ -173,18 +173,20 @@ impl ToolRegistry {
 
     /// List all registered tools
     pub fn list(&self) -> Result<Vec<RegisteredTool>> {
-        let tools = self.tools.read().map_err(|_| {
-            Error::InvalidConfig("Registry lock poisoned".to_string())
-        })?;
+        let tools = self
+            .tools
+            .read()
+            .map_err(|_| Error::InvalidConfig("Registry lock poisoned".to_string()))?;
 
         Ok(tools.values().cloned().collect())
     }
 
     /// Update tool health status
     pub fn update_health(&self, name: &str, healthy: bool) -> Result<()> {
-        let mut tools = self.tools.write().map_err(|_| {
-            Error::InvalidConfig("Registry lock poisoned".to_string())
-        })?;
+        let mut tools = self
+            .tools
+            .write()
+            .map_err(|_| Error::InvalidConfig("Registry lock poisoned".to_string()))?;
 
         let tool = tools
             .get_mut(name)
@@ -203,10 +205,7 @@ impl ToolRegistry {
 
     /// Get count of registered tools
     pub fn count(&self) -> usize {
-        self.tools
-            .read()
-            .map(|tools| tools.len())
-            .unwrap_or(0)
+        self.tools.read().map(|tools| tools.len()).unwrap_or(0)
     }
 
     /// Check if a tool is registered
