@@ -717,7 +717,7 @@ impl Tool for ExtractFileTool {
             file.write_all(&data)?;
 
             data.len() as u64
-        } else if let Ok(iso) = IsoTerritory::parse(&mut partial) {
+        } else if let Ok(_iso) = IsoTerritory::parse(&mut partial) {
             // NOTE: ISO file extraction via DirectoryCell not supported
             // IsoTerritory::read_file() exists but DirectoryCell trait design prevents its use.
             // Could be implemented by refactoring to pass stream through DirectoryCell methods.

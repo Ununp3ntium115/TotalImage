@@ -145,9 +145,7 @@ impl FireMarshal {
         tracing::info!("Fire Marshal listening on {}", addr);
 
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, app)
-            .await
-            .map_err(|e| Error::Io(e.into()))?;
+        axum::serve(listener, app).await.map_err(Error::Io)?;
 
         Ok(())
     }

@@ -181,7 +181,7 @@ impl VhdFooter {
         let mut sum: u32 = 0;
         for (i, &byte) in bytes.iter().enumerate() {
             // Skip checksum field (bytes 64-67)
-            if i >= 64 && i < 68 {
+            if (64..68).contains(&i) {
                 continue;
             }
             sum = sum.wrapping_add(byte as u32);
@@ -282,16 +282,16 @@ impl VhdDynamicHeader {
 
         // Parse parent unicode name (256 UTF-16 BE characters)
         let mut parent_unicode_name = [0u16; 256];
-        for i in 0..256 {
+        for (i, name) in parent_unicode_name.iter_mut().enumerate() {
             let offset = 64 + i * 2;
-            parent_unicode_name[i] = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
+            *name = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]);
         }
 
         // Parse parent locator entries (8 entries of 24 bytes each)
         let mut parent_locator_entries = [[0u8; 24]; 8];
-        for i in 0..8 {
+        for (i, entry) in parent_locator_entries.iter_mut().enumerate() {
             let offset = 576 + i * 24;
-            parent_locator_entries[i].copy_from_slice(&bytes[offset..offset + 24]);
+            entry.copy_from_slice(&bytes[offset..offset + 24]);
         }
 
         // Parse remaining reserved bytes
@@ -325,7 +325,7 @@ impl VhdDynamicHeader {
         let mut sum: u32 = 0;
         for (i, &byte) in bytes.iter().enumerate() {
             // Skip checksum field (bytes 36-39)
-            if i >= 36 && i < 40 {
+            if (36..40).contains(&i) {
                 continue;
             }
             sum = sum.wrapping_add(byte as u32);
@@ -380,7 +380,7 @@ pub struct BlockAllocationTable {
 impl BlockAllocationTable {
     /// Parse BAT from raw bytes
     pub fn parse(bytes: &[u8], block_size: u32) -> Result<Self> {
-        if bytes.len() % 4 != 0 {
+        if !bytes.len().is_multiple_of(4) {
             return Err(totalimage_core::Error::invalid_vault(
                 "BAT size must be multiple of 4",
             ));

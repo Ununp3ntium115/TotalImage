@@ -22,7 +22,6 @@ use std::time::Duration;
 use totalimage_core::{validate_file_path, Result as TotalImageResult, ZoneTable};
 use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
-use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::timeout::TimeoutLayer;
