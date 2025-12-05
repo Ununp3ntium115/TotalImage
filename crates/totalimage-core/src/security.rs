@@ -4,8 +4,8 @@
 //! common vulnerabilities in disk image parsing.
 
 use crate::Error;
-use std::{env, io};
 use std::path::{Path, PathBuf};
+use std::{env, io};
 
 /// Maximum sector size we'll accept (4KB - common for advanced format)
 pub const MAX_SECTOR_SIZE: u32 = 4096;
@@ -58,11 +58,7 @@ pub fn allowed_roots_from_env_var(var_name: &str) -> crate::Result<Vec<PathBuf>>
         }
 
         let canonical = raw.canonicalize().map_err(|e| {
-            Error::invalid_vault(format!(
-                "Allowed root {} is invalid: {}",
-                raw.display(),
-                e
-            ))
+            Error::invalid_vault(format!("Allowed root {} is invalid: {}", raw.display(), e))
         })?;
 
         if !canonical.is_dir() {
@@ -163,9 +159,7 @@ pub fn validate_file_path(path: &str, allowed_roots: &[PathBuf]) -> crate::Resul
     }
 
     if path.contains('\0') {
-        return Err(Error::invalid_vault(
-            "Path contains null byte".to_string(),
-        ));
+        return Err(Error::invalid_vault("Path contains null byte".to_string()));
     }
 
     if allowed_roots.is_empty() {
@@ -178,7 +172,10 @@ pub fn validate_file_path(path: &str, allowed_roots: &[PathBuf]) -> crate::Resul
     let candidates: Vec<PathBuf> = if path_obj.is_absolute() {
         vec![path_obj.to_path_buf()]
     } else {
-        allowed_roots.iter().map(|root| root.join(path_obj)).collect()
+        allowed_roots
+            .iter()
+            .map(|root| root.join(path_obj))
+            .collect()
     };
 
     let mut saw_not_found = false;
@@ -314,9 +311,7 @@ pub fn validate_partition_index(index: usize, max: usize) -> crate::Result<()> {
 pub fn validate_fs_path_components(path: &str) -> crate::Result<Vec<String>> {
     // Reject empty paths
     if path.is_empty() {
-        return Err(Error::invalid_vault(
-            "Empty filesystem path".to_string(),
-        ));
+        return Err(Error::invalid_vault("Empty filesystem path".to_string()));
     }
 
     // Reject paths with null bytes
@@ -335,7 +330,7 @@ pub fn validate_fs_path_components(path: &str) -> crate::Result<Vec<String>> {
     }
 
     let path = path.trim_matches('/').trim_matches('\\');
-    
+
     // Split path on / or \
     let parts: Vec<String> = path
         .split(['/', '\\'])
@@ -399,10 +394,7 @@ mod tests {
     #[test]
     fn test_checked_multiply_u64() {
         // Valid multiplication
-        assert_eq!(
-            checked_multiply_u64(1000, 512, "test").unwrap(),
-            512_000
-        );
+        assert_eq!(checked_multiply_u64(1000, 512, "test").unwrap(), 512_000);
 
         // Overflow
         assert!(checked_multiply_u64(u64::MAX, 2, "test").is_err());
@@ -575,12 +567,10 @@ mod tests {
         assert!(validate_allocation_size(0, MAX_ALLOCATION_SIZE, "test").is_ok());
 
         // Exactly at limit (valid)
-        assert!(validate_allocation_size(
-            MAX_ALLOCATION_SIZE as u64,
-            MAX_ALLOCATION_SIZE,
-            "test"
-        )
-        .is_ok());
+        assert!(
+            validate_allocation_size(MAX_ALLOCATION_SIZE as u64, MAX_ALLOCATION_SIZE, "test")
+                .is_ok()
+        );
 
         // Just over limit (invalid)
         assert!(validate_allocation_size(

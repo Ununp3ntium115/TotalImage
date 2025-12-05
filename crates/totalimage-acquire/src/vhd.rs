@@ -350,12 +350,12 @@ fn create_vhd_footer(size: u64, vhd_type: VhdType, creator_app: &[u8; 4]) -> Vhd
 
     let data_offset = match vhd_type {
         VhdType::Fixed => 0xFFFFFFFFFFFFFFFFu64, // No dynamic header
-        VhdType::Dynamic => 512, // Dynamic header follows footer
+        VhdType::Dynamic => 512,                 // Dynamic header follows footer
     };
 
     VhdFooterData {
         cookie: *b"conectix",
-        features: 2, // Reserved (no features)
+        features: 2,         // Reserved (no features)
         version: 0x00010000, // Version 1.0
         data_offset,
         timestamp,
@@ -396,7 +396,7 @@ fn serialize_footer(footer: &VhdFooterData) -> [u8; 512] {
     // Checksum at 64..68 - calculated below
     bytes[68..84].copy_from_slice(&footer.uuid);
     bytes[84] = 0; // saved_state
-    // bytes[85..512] = reserved (zeros)
+                   // bytes[85..512] = reserved (zeros)
 
     // Calculate checksum
     let mut sum: u32 = 0;
@@ -429,7 +429,7 @@ fn create_dynamic_header(num_blocks: u32, block_size: u32) -> VhdDynamicHeaderDa
     VhdDynamicHeaderData {
         cookie: *b"cxsparse",
         data_offset: 0xFFFFFFFFFFFFFFFFu64, // Unused
-        table_offset: 512 + 1024, // After footer + header
+        table_offset: 512 + 1024,           // After footer + header
         header_version: 0x00010000,
         max_table_entries: num_blocks,
         block_size,
@@ -514,10 +514,12 @@ fn generate_uuid() -> [u8; 16] {
 
     for chunk in uuid.chunks_mut(8) {
         let mut h = hasher.build_hasher();
-        h.write_u64(std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos() as u64);
+        h.write_u64(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos() as u64,
+        );
         let hash = h.finish();
         let bytes = hash.to_le_bytes();
         let len = chunk.len().min(8);
@@ -596,7 +598,8 @@ mod tests {
         let output = dest.into_inner();
         assert_eq!(&output[0..8], b"conectix"); // Footer copy at start
         assert_eq!(&output[512..520], b"cxsparse"); // Dynamic header
-        assert_eq!(&output[output.len() - 512..output.len() - 504], b"conectix"); // Footer at end
+        assert_eq!(&output[output.len() - 512..output.len() - 504], b"conectix");
+        // Footer at end
     }
 
     #[test]

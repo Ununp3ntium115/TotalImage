@@ -460,7 +460,8 @@ impl MetadataCache {
     /// The task runs every MAINTENANCE_INTERVAL_SECS (1 hour by default)
     pub fn spawn_maintenance_task(cache: Arc<Self>) {
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(MAINTENANCE_INTERVAL_SECS));
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(MAINTENANCE_INTERVAL_SECS));
 
             loop {
                 interval.tick().await;
@@ -471,7 +472,10 @@ impl MetadataCache {
                 match cache.cleanup_expired() {
                     Ok(removed) => {
                         if removed > 0 {
-                            tracing::info!("Cache maintenance: removed {} expired entries", removed);
+                            tracing::info!(
+                                "Cache maintenance: removed {} expired entries",
+                                removed
+                            );
                         }
                     }
                     Err(e) => {

@@ -24,20 +24,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use totalimage_core::{
-    allowed_roots_from_env,
-    allowed_roots_from_env_var,
-    validate_file_path,
-    Result as TotalImageResult,
-    Territory,
-    ZoneTable,
+    allowed_roots_from_env, allowed_roots_from_env_var, validate_file_path,
+    Result as TotalImageResult, Territory, ZoneTable,
 };
 use totalimage_mcp::{auth_middleware, AuthConfig};
 use totalimage_pipeline::PartialPipeline;
 use totalimage_territories::{FatTerritory, IsoTerritory, NtfsTerritory};
 use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
-use tower::ServiceBuilder;
 use tower::limit::ConcurrencyLimitLayer;
+use tower::ServiceBuilder;
 use tower_http::{
     cors::{Any, CorsLayer},
     timeout::TimeoutLayer,
@@ -53,7 +49,13 @@ struct AppState {
     cache: Arc<MetadataCache>,
     allowed_roots: Arc<Vec<PathBuf>>,
     #[allow(dead_code)]
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+        >,
+    >,
     start_time: std::time::Instant,
 }
 
@@ -74,11 +76,10 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     // Initialize metadata cache
-    let cache_dir = std::env::var("TOTALIMAGE_CACHE_DIR")
-        .unwrap_or_else(|_| {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            format!("{}/.cache/totalimage", home)
-        });
+    let cache_dir = std::env::var("TOTALIMAGE_CACHE_DIR").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        format!("{}/.cache/totalimage", home)
+    });
     let cache_path = std::path::PathBuf::from(cache_dir).join("metadata.redb");
 
     let cache = match MetadataCache::new(cache_path.clone()) {
@@ -129,7 +130,10 @@ async fn main() {
     if auth_enabled {
         tracing::info!("Authentication enabled");
         if !auth_config.api_keys.is_empty() {
-            tracing::info!("  API key authentication: {} keys configured", auth_config.api_keys.len());
+            tracing::info!(
+                "  API key authentication: {} keys configured",
+                auth_config.api_keys.len()
+            );
         }
         if auth_config.jwt_secret.is_some() || auth_config.jwt_public_key.is_some() {
             tracing::info!("  JWT authentication: enabled");
@@ -153,7 +157,10 @@ async fn main() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(100);
     let concurrency_limit = ConcurrencyLimitLayer::new(max_concurrent);
-    tracing::info!("Concurrency limit: {} max concurrent requests", max_concurrent);
+    tracing::info!(
+        "Concurrency limit: {} max concurrent requests",
+        max_concurrent
+    );
 
     // Build middleware stack
     let middleware = ServiceBuilder::new()
@@ -168,7 +175,10 @@ async fn main() {
         .route("/api/vault/zones", get(vault_zones))
         .route("/api/vault/files", get(vault_files))
         .route("/api/vault/extract", get(vault_extract))
-        .route_layer(middleware::from_fn_with_state(auth_config.clone(), auth_middleware));
+        .route_layer(middleware::from_fn_with_state(
+            auth_config.clone(),
+            auth_middleware,
+        ));
 
     // Configure request body limit (10 MB default)
     let body_limit_mb: usize = std::env::var("TOTALIMAGE_WEB_BODY_LIMIT_MB")
@@ -212,7 +222,12 @@ async fn main() {
     let use_tls = tls_cert.is_some() && tls_key.is_some();
 
     let protocol = if use_tls { "https" } else { "http" };
-    tracing::info!("TotalImage Web Server v{} starting on {}://{}", VERSION, protocol, addr);
+    tracing::info!(
+        "TotalImage Web Server v{} starting on {}://{}",
+        VERSION,
+        protocol,
+        addr
+    );
     println!("TotalImage Web Server v{}", VERSION);
     println!("   Listening on {}://{}", protocol, addr);
     if use_tls {
@@ -242,10 +257,13 @@ async fn main() {
             }
         };
 
-        tracing::info!("TLS configured with cert: {}, key: {}", cert_path.display(), key_path.display());
+        tracing::info!(
+            "TLS configured with cert: {}, key: {}",
+            cert_path.display(),
+            key_path.display()
+        );
 
-        let server = axum_server::bind_rustls(addr, tls_config)
-            .serve(app.into_make_service());
+        let server = axum_server::bind_rustls(addr, tls_config).serve(app.into_make_service());
 
         // Note: axum-server doesn't support graceful shutdown the same way,
         // but we handle SIGTERM at the process level
@@ -260,7 +278,9 @@ async fn main() {
             Err(e) => {
                 tracing::error!("Failed to bind to {}: {}", addr, e);
                 eprintln!("Error: Failed to bind to {}: {}", addr, e);
-                eprintln!("Hint: Check if the port is already in use or if you have permission to bind");
+                eprintln!(
+                    "Hint: Check if the port is already in use or if you have permission to bind"
+                );
                 std::process::exit(1);
             }
         };
@@ -376,7 +396,10 @@ async fn vault_info(
     Query(params): Query<VaultQuery>,
 ) -> impl IntoResponse {
     // Check cache first
-    if let Ok(Some(cached_info)) = state.cache.get_vault_info::<VaultInfoResponse>(&params.path) {
+    if let Ok(Some(cached_info)) = state
+        .cache
+        .get_vault_info::<VaultInfoResponse>(&params.path)
+    {
         tracing::info!("Cache HIT for vault_info: {}", params.path);
         return (StatusCode::OK, Json(cached_info)).into_response();
     }
@@ -569,10 +592,16 @@ async fn vault_files(
     Query(params): Query<FilesQuery>,
 ) -> impl IntoResponse {
     let zone_index = params.zone.unwrap_or(0);
-    let cache_key = format!("{}:zone{}:{}:{}", params.path, zone_index, params.offset, params.limit);
+    let cache_key = format!(
+        "{}:zone{}:{}:{}",
+        params.path, zone_index, params.offset, params.limit
+    );
 
     // Check cache first
-    if let Ok(Some(cached_files)) = state.cache.get_dir_listing::<VaultFilesResponse>(&cache_key) {
+    if let Ok(Some(cached_files)) = state
+        .cache
+        .get_dir_listing::<VaultFilesResponse>(&cache_key)
+    {
         tracing::info!("Cache HIT for files: {}", cache_key);
         return (StatusCode::OK, Json(cached_files)).into_response();
     }
@@ -580,7 +609,13 @@ async fn vault_files(
     tracing::info!("Cache MISS for files: {}", cache_key);
 
     // Get file listing
-    match get_vault_files(&params.path, zone_index, params.offset, params.limit, &state.allowed_roots) {
+    match get_vault_files(
+        &params.path,
+        zone_index,
+        params.offset,
+        params.limit,
+        &state.allowed_roots,
+    ) {
         Ok(files) => {
             // Store in cache
             if let Err(e) = state.cache.set_dir_listing(&cache_key, &files) {
@@ -641,7 +676,9 @@ fn get_vault_files(
             let fs_type = fat.identify().to_string();
             cursor.seek(SeekFrom::Start(0))?;
             if let Ok(entries) = fat.list_directory(&mut cursor, "/") {
-                return build_files_response(image_path, zone_index, fs_type, entries, offset, limit);
+                return build_files_response(
+                    image_path, zone_index, fs_type, entries, offset, limit,
+                );
             }
         }
     }
@@ -652,7 +689,9 @@ fn get_vault_files(
         if let Ok(mut ntfs) = NtfsTerritory::parse(cursor) {
             let fs_type = ntfs.identify().to_string();
             if let Ok(entries) = ntfs.read_directory_at_path("/") {
-                return build_files_response(image_path, zone_index, fs_type, entries, offset, limit);
+                return build_files_response(
+                    image_path, zone_index, fs_type, entries, offset, limit,
+                );
             }
         }
     }
@@ -679,7 +718,9 @@ fn get_vault_files(
                         attributes: rec.file_flags as u32,
                     })
                     .collect();
-                return build_files_response(image_path, zone_index, fs_type, entries, offset, limit);
+                return build_files_response(
+                    image_path, zone_index, fs_type, entries, offset, limit,
+                );
             }
         }
     }
@@ -718,7 +759,9 @@ fn build_files_response(
                 path,
                 size: entry.size,
                 is_directory: entry.is_directory,
-                modified: entry.modified.map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
+                modified: entry
+                    .modified
+                    .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string()),
             }
         })
         .collect();
@@ -976,7 +1019,9 @@ fn validate_auth_config(config: &AuthConfig) {
             errors.push(format!(
                 "JWT secret too short for {:?}. Minimum {} characters, got {}. \
                  Set TOTALIMAGE_WEB_JWT_SECRET to a longer value.",
-                config.jwt_algorithm, min_length, secret.len()
+                config.jwt_algorithm,
+                min_length,
+                secret.len()
             ));
         }
     }
@@ -986,7 +1031,8 @@ fn validate_auth_config(config: &AuthConfig) {
         if key.len() < 16 {
             errors.push(format!(
                 "API key {} is too short ({} chars). Minimum 16 characters for security.",
-                i + 1, key.len()
+                i + 1,
+                key.len()
             ));
         }
     }

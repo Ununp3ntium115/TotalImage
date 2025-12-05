@@ -365,7 +365,11 @@ impl MCPServer {
                         if let Err(e) = self.cache.set(&cache_key, &value) {
                             tracing::warn!("Failed to cache tool result: {}", e);
                         } else {
-                            tracing::debug!("Cached result for tool {}: {}", params.name, cache_key);
+                            tracing::debug!(
+                                "Cached result for tool {}: {}",
+                                params.name,
+                                cache_key
+                            );
                         }
                     }
                     metrics::record_tool_call(tool_name, true);
@@ -448,9 +452,7 @@ fn build_tools(cache: Arc<ToolCache>, allowed_roots: Arc<Vec<PathBuf>>) -> Vec<T
         ToolEnum::ExtractFile(ExtractFileTool {
             allowed_roots: allowed_roots.clone(),
         }),
-        ToolEnum::ValidateIntegrity(ValidateIntegrityTool {
-            allowed_roots,
-        }),
+        ToolEnum::ValidateIntegrity(ValidateIntegrityTool { allowed_roots }),
     ]
 }
 
