@@ -23,27 +23,27 @@ pub enum Error {
 
     /// Database error
     #[error("Database error: {0}")]
-    Database(#[from] redb::Error),
+    Database(Box<redb::Error>),
 
     /// Database creation error
     #[error("Database creation error: {0}")]
-    DatabaseCreation(#[from] redb::DatabaseError),
+    DatabaseCreation(Box<redb::DatabaseError>),
 
     /// Database transaction error
     #[error("Database transaction error: {0}")]
-    DatabaseTransaction(#[from] redb::TransactionError),
+    DatabaseTransaction(Box<redb::TransactionError>),
 
     /// Database table error
     #[error("Database table error: {0}")]
-    DatabaseTable(#[from] redb::TableError),
+    DatabaseTable(Box<redb::TableError>),
 
     /// Database storage error
     #[error("Database storage error: {0}")]
-    DatabaseStorage(#[from] redb::StorageError),
+    DatabaseStorage(Box<redb::StorageError>),
 
     /// Database commit error
     #[error("Database commit error: {0}")]
-    DatabaseCommit(#[from] redb::CommitError),
+    DatabaseCommit(Box<redb::CommitError>),
 
     /// Serialization error
     #[error("Serialization error: {0}")]
@@ -76,3 +76,40 @@ pub enum Error {
 
 /// Result type alias for Fire Marshal
 pub type Result<T> = std::result::Result<T, Error>;
+
+// Implement From for boxed redb errors
+impl From<redb::Error> for Error {
+    fn from(e: redb::Error) -> Self {
+        Error::Database(Box::new(e))
+    }
+}
+
+impl From<redb::DatabaseError> for Error {
+    fn from(e: redb::DatabaseError) -> Self {
+        Error::DatabaseCreation(Box::new(e))
+    }
+}
+
+impl From<redb::TransactionError> for Error {
+    fn from(e: redb::TransactionError) -> Self {
+        Error::DatabaseTransaction(Box::new(e))
+    }
+}
+
+impl From<redb::TableError> for Error {
+    fn from(e: redb::TableError) -> Self {
+        Error::DatabaseTable(Box::new(e))
+    }
+}
+
+impl From<redb::StorageError> for Error {
+    fn from(e: redb::StorageError) -> Self {
+        Error::DatabaseStorage(Box::new(e))
+    }
+}
+
+impl From<redb::CommitError> for Error {
+    fn from(e: redb::CommitError) -> Self {
+        Error::DatabaseCommit(Box::new(e))
+    }
+}

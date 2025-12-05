@@ -249,7 +249,7 @@ mod tests {
         assert_eq!(pipeline.position(), 50);
 
         let mut buf = [0u8; 5];
-        pipeline.read(&mut buf).unwrap();
+        pipeline.read_exact(&mut buf).unwrap();
         assert_eq!(&buf, &[50, 51, 52, 53, 54]);
     }
 

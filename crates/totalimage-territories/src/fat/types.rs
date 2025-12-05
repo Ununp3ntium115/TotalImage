@@ -633,9 +633,8 @@ mod tests {
     #[test]
     fn test_lfn_checksum() {
         let short_name: [u8; 11] = *b"LONGFI~1TXT";
-        let checksum = LfnEntry::calculate_checksum(&short_name);
-        // Just verify it doesn't panic and returns a value
-        assert!(checksum > 0 || checksum == 0);
+        let _checksum = LfnEntry::calculate_checksum(&short_name);
+        // Just verify it doesn't panic
     }
 
     #[test]

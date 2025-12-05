@@ -117,10 +117,9 @@ impl PlatformDatabase {
         let encoded = bincode::serialize(&entry)?;
 
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let write_txn = db.begin_write()?;
         {
@@ -136,10 +135,9 @@ impl PlatformDatabase {
     pub fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         let expired = {
             let db = self.db.lock().map_err(|_| {
-                Error::Database(redb::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
+                Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                     "Lock poisoned",
-                )))
+                ))))
             })?;
             let read_txn = db.begin_read()?;
             let table = read_txn.open_table(CACHE_TABLE)?;
@@ -170,10 +168,9 @@ impl PlatformDatabase {
     /// Remove a value from the cache
     pub fn remove(&self, key: &str) -> Result<()> {
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let write_txn = db.begin_write()?;
         {
@@ -190,10 +187,9 @@ impl PlatformDatabase {
         let encoded = bincode::serialize(tool_info)?;
 
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let write_txn = db.begin_write()?;
         {
@@ -209,10 +205,9 @@ impl PlatformDatabase {
     /// Get all registered tools from database
     pub fn get_registered_tools(&self) -> Result<Vec<crate::ToolInfo>> {
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let read_txn = db.begin_read()?;
         let table = read_txn.open_table(TOOL_REGISTRY_TABLE)?;
@@ -253,10 +248,9 @@ impl PlatformDatabase {
         let encoded = bincode::serialize(&log_entry)?;
 
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let write_txn = db.begin_write()?;
         {
@@ -271,10 +265,9 @@ impl PlatformDatabase {
     /// Get database statistics
     pub fn stats(&self) -> Result<DatabaseStats> {
         let db = self.db.lock().map_err(|_| {
-            Error::Database(redb::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
+            Error::Database(Box::new(redb::Error::Io(std::io::Error::other(
                 "Lock poisoned",
-            )))
+            ))))
         })?;
         let read_txn = db.begin_read()?;
 

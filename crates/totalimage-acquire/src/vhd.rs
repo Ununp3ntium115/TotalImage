@@ -575,9 +575,11 @@ mod tests {
         let mut source = Cursor::new(&source_data);
         let mut dest = Cursor::new(Vec::new());
 
-        let mut options = VhdOptions::default();
-        options.vhd_type = VhdOutputType::Dynamic;
-        options.block_size = 1024 * 1024; // 1 MB blocks
+        let options = VhdOptions {
+            vhd_type: VhdOutputType::Dynamic,
+            block_size: 1024 * 1024, // 1 MB blocks
+            ..Default::default()
+        };
 
         let creator = VhdCreator::new(options);
         let result = creator
@@ -621,7 +623,7 @@ mod tests {
         // Verify checksum calculation
         let mut sum: u32 = 0;
         for (i, &byte) in bytes.iter().enumerate() {
-            if i >= 64 && i < 68 {
+            if (64..68).contains(&i) {
                 continue;
             }
             sum = sum.wrapping_add(byte as u32);

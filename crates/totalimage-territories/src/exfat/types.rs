@@ -434,7 +434,7 @@ impl FileNameEntry {
     }
 
     /// Get file name as string
-    pub fn to_string(&self) -> String {
+    pub fn file_name_string(&self) -> String {
         String::from_utf16_lossy(
             &self.file_name.iter()
                 .take_while(|&&c| c != 0)
@@ -488,7 +488,7 @@ impl VolumeLabelEntry {
     }
 
     /// Get volume label as string
-    pub fn to_string(&self) -> String {
+    pub fn label_string(&self) -> String {
         let count = self.character_count.min(11) as usize;
         String::from_utf16_lossy(&self.volume_label[..count])
     }
@@ -585,7 +585,7 @@ mod tests {
     #[test]
     fn test_timestamp_decode() {
         // Test timestamp: 2023-06-15 14:30:00
-        let timestamp = (43 << 25) | (6 << 21) | (15 << 16) | (14 << 11) | (30 << 5) | 0;
+        let timestamp = (43 << 25) | (6 << 21) | (15 << 16) | (14 << 11) | (30 << 5);
         let (year, month, day, hour, minute, second) = FileDirectoryEntry::decode_timestamp(timestamp);
         assert_eq!(year, 2023);
         assert_eq!(month, 6);
