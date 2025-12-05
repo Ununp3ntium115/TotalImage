@@ -127,7 +127,6 @@ pub struct Aff4Volume {
     pub streams: Vec<Aff4ImageStream>,
 }
 
-
 /// AFF4 container information
 #[derive(Debug, Clone)]
 pub struct Aff4Container {
