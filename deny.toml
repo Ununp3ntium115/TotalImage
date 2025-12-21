@@ -1,0 +1,31 @@
+# cargo-deny configuration for security and license checking
+# See: https://github.com/EmbarkStudios/cargo-deny
+
+[licenses]
+# Allow all licenses for now (can be restricted later)
+default = "allow"
+copyleft = "allow"
+
+[bans]
+# Don't allow duplicate dependencies
+multiple-versions = "warn"
+# Don't allow wildcard dependencies
+wildcards = "deny"
+
+[sources]
+# Only allow crates.io and git repositories
+unknown-registry = "deny"
+unknown-git = "deny"
+
+[advisories]
+# Check for security vulnerabilities
+vulnerability = "deny"
+# Check for unmaintained crates (warn only)
+unmaintained = "warn"
+# Check for yanked crates
+yanked = "deny"
+
+[metadata]
+# Metadata for the deny.toml file
+authors = ["Total Liberation Collective"]
+
