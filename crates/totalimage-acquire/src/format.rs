@@ -132,7 +132,7 @@ impl Fat32Formatter {
         boot_sector[24..26].copy_from_slice(&63u16.to_le_bytes()); // Sectors per track
         boot_sector[26..28].copy_from_slice(&255u16.to_le_bytes()); // Number of heads
         boot_sector[28..32].copy_from_slice(&0u32.to_le_bytes()); // Hidden sectors
-        // Total sectors 32-bit (offset 32-35, 4 bytes)
+                                                                  // Total sectors 32-bit (offset 32-35, 4 bytes)
         let total_sectors_u32 = total_sectors.min(u32::MAX as u64) as u32;
         boot_sector[32..36].copy_from_slice(&total_sectors_u32.to_le_bytes());
 
@@ -242,7 +242,6 @@ impl Fat32Formatter {
 mod tests {
     use super::*;
     use std::io::Cursor;
-    use totalimage_territories::fat::FatTerritory;
 
     #[test]
     fn test_fat32_formatting() {

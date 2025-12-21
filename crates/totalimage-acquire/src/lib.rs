@@ -16,6 +16,7 @@ pub mod progress;
 pub mod raw;
 pub mod usb;
 pub mod vhd;
+pub mod winpe;
 
 pub use error::{AcquireError, Result};
 pub use format::Fat32Formatter;
@@ -25,3 +26,7 @@ pub use progress::{AcquireProgress, ProgressCallback};
 pub use raw::{AcquireOptions, RawAcquirer};
 pub use usb::{detect_usb_drives, UsbDrive};
 pub use vhd::{VhdCreationResult, VhdCreator, VhdOptions, VhdOutputType};
+pub use winpe::{
+    create_boot_config, extract_wim_to_usb, find_winpe_source, validate_winpe_source,
+    WinpeArchitecture, WinpeSource,
+};

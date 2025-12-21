@@ -168,7 +168,10 @@
 - ✅ Task 9.2: Integration tests framework complete (6 tests passing)
 - ✅ Committed and pushed to master branch
 - ✅ Iteration 10.1.1: USB Drive Detection implemented (Linux support, Windows/macOS stubs)
-- 🔄 CI/CD pipeline: CodeQL running successfully, Rust CI workflow monitoring
+- ✅ Iteration 10.1.2: Partition Table Creation (MBR complete, GPT placeholder)
+- ✅ Iteration 10.1.3: FAT32 Formatting (boot sector, FSInfo, FAT tables)
+- ✅ Iteration 10.2.1: WinPE Source Detection (Windows ADK detection, WIM validation)
+- 🔄 CI/CD pipeline: CodeQL running successfully, all tests passing
 
 ---
 
