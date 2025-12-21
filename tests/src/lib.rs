@@ -5,10 +5,9 @@
 /// Test utilities and helpers
 pub mod utils {
     use std::path::Path;
-    
+
     /// Check if test fixtures are available
     pub fn fixtures_available() -> bool {
         Path::new("tests/fixtures").exists()
     }
 }
-

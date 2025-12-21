@@ -2606,6 +2606,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "totalimage-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "totalimage-core",
+ "totalimage-pipeline",
+ "totalimage-territories",
+ "totalimage-vaults",
+ "totalimage-zones",
+]
+
+[[package]]
 name = "totalimage-mcp"
 version = "0.1.0"
 dependencies = [
