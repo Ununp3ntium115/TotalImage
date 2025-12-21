@@ -58,6 +58,18 @@ jobs:
       - name: Run doc tests
         run: cargo test --workspace --doc
 
+      - name: Security audit
+        uses: rustsec/rustsec-action@v1
+        with:
+          command: audit
+          args: --deny warnings
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --locked
+
+      - name: Run cargo-deny
+        run: cargo deny check
+
   coverage:
     name: Code Coverage
     runs-on: ubuntu-latest

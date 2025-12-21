@@ -439,8 +439,22 @@ impl Read for VhdChainVault {
         let to_read = buf.len().min(remaining);
 
         let mut total_read = 0;
+        let mut iterations = 0;
+        // Prevent infinite loops from corrupted VHD chain files (SEC-011)
+        const MAX_CHAIN_ITERATIONS: usize = 100_000;
 
         while total_read < to_read {
+            iterations += 1;
+            if iterations > MAX_CHAIN_ITERATIONS {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "VHD chain reading exceeded maximum iterations ({}), possible circular reference or corrupted chain",
+                        MAX_CHAIN_ITERATIONS
+                    ),
+                ));
+            }
+
             let current_offset = self.position + total_read as u64;
             let block_index = (current_offset / self.block_size as u64) as usize;
             let block_offset = current_offset % self.block_size as u64;
@@ -570,8 +584,21 @@ impl<R: Read + Seek> Read for VhdDynamicPipeline<R> {
         let to_read = buf.len().min(remaining);
 
         let mut total_read = 0;
+        let mut iterations = 0;
+        // Prevent infinite loops from corrupted VHD files (SEC-011)
+        const MAX_BLOCK_ITERATIONS: usize = 100_000;
 
         while total_read < to_read {
+            iterations += 1;
+            if iterations > MAX_BLOCK_ITERATIONS {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "VHD block reading exceeded maximum iterations ({}), possible circular reference or corrupted file",
+                        MAX_BLOCK_ITERATIONS
+                    ),
+                ));
+            }
             let current_offset = self.position + total_read as u64;
 
             // Get block index and offset within block

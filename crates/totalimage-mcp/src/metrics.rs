@@ -167,11 +167,22 @@ mod tests {
 
     #[test]
     fn test_metrics_encoding() {
+        // Record some metrics first to ensure they appear in the output
+        record_tool_call("test_tool", true);
+        record_cache_operation(true);
+        
         let state = MetricsState::new();
         let encoded = state.encode();
         assert!(encoded.is_ok());
         let text = encoded.unwrap();
-        assert!(text.contains("totalimage_mcp"));
+        // Check for any of our metric names
+        assert!(
+            text.contains("totalimage_mcp") || 
+            text.contains("totalimage_mcp_tool_calls_total") ||
+            text.contains("totalimage_mcp_cache_operations_total"),
+            "Metrics output should contain totalimage_mcp metrics, got: {}",
+            text
+        );
     }
 
     #[test]

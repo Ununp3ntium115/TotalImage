@@ -294,17 +294,29 @@ impl MetadataCache {
         let read_txn = db.begin_read()?;
 
         // Sum up the stored bytes from all tables
+        // Use saturating arithmetic to prevent integer overflow (SEC-008)
         let mut total_bytes = 0u64;
 
         // Estimate based on number of entries
         let vault_table = read_txn.open_table(VAULT_INFO_TABLE)?;
-        total_bytes += vault_table.len()? * 1024; // Estimate 1KB per entry
+        total_bytes = total_bytes.saturating_add(
+            vault_table.len()?.saturating_mul(1024), // Estimate 1KB per entry
+        );
 
         let zone_table = read_txn.open_table(ZONE_TABLE)?;
-        total_bytes += zone_table.len()? * 2048; // Estimate 2KB per entry
+        total_bytes = total_bytes.saturating_add(
+            zone_table.len()?.saturating_mul(2048), // Estimate 2KB per entry
+        );
 
         let dir_table = read_txn.open_table(DIR_LISTINGS)?;
-        total_bytes += dir_table.len()? * 512; // Estimate 512B per entry
+        total_bytes = total_bytes.saturating_add(
+            dir_table.len()?.saturating_mul(512), // Estimate 512B per entry
+        );
+
+        // Log warning if saturation occurred (indicates cache may be larger than estimated)
+        if total_bytes == u64::MAX {
+            tracing::warn!("Cache size calculation saturated - cache may be larger than estimated");
+        }
 
         Ok(total_bytes)
     }
