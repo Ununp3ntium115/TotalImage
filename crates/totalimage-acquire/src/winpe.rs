@@ -56,7 +56,6 @@ pub fn find_winpe_source() -> Result<WinpeSource> {
 
 #[cfg(target_os = "windows")]
 fn find_winpe_source_windows() -> Result<WinpeSource> {
-
     // Common ADK installation paths
     let adk_paths = vec![
         PathBuf::from(
@@ -102,7 +101,6 @@ fn find_winpe_source_windows() -> Result<WinpeSource> {
 ///
 /// Checks that the file exists and appears to be a valid WIM file.
 pub fn validate_winpe_source(boot_wim_path: &Path) -> Result<WinpeArchitecture> {
-
     if !boot_wim_path.exists() {
         return Err(AcquireError::SourceNotFound(format!(
             "boot.wim not found: {}",

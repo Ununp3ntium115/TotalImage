@@ -16,6 +16,7 @@ totalimage-pipeline = { path = "../totalimage-pipeline" }
 totalimage-vaults = { path = "../totalimage-vaults" }
 totalimage-zones = { path = "../totalimage-zones" }
 totalimage-territories = { path = "../totalimage-territories" }
+totalimage-acquire = { path = "../totalimage-acquire" }
 clap.workspace = true
 anyhow.workspace = true
 tracing.workspace = true

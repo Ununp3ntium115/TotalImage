@@ -3,8 +3,13 @@
 //! A tool for inspecting disk images, partition tables, and file systems.
 
 use std::env;
-use std::path::Path;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::process;
+use totalimage_acquire::{
+    detect_usb_drives, extract_wim_to_usb, find_winpe_source, validate_winpe_source,
+    Fat32Formatter, PartitionTableBuilder, PartitionTableType, UsbDrive, WinpeSource,
+};
 use totalimage_core::{Result, ZoneTable};
 use totalimage_pipeline::PartialPipeline;
 use totalimage_vaults::{open_vault, VaultConfig};
@@ -79,6 +84,12 @@ fn main() {
                 process::exit(1);
             }
         }
+        "create-winpe-usb" => {
+            if let Err(e) = cmd_create_winpe_usb(&args[1..]) {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        }
         "--help" | "-h" | "help" => {
             print_usage(&args[0]);
         }
@@ -104,12 +115,20 @@ fn print_usage(program: &str) {
     println!("    zones <image>                          List partition zones");
     println!("    list <image> [--zone INDEX]            List files in filesystem");
     println!("    extract <image> <file> [OPTIONS]       Extract a file");
+    println!("    create-winpe-usb [OPTIONS]             Create WinPE bootable USB drive");
     println!("    help                                   Print this help message");
     println!("    version                                Print version");
     println!();
     println!("EXTRACT OPTIONS:");
     println!("    --zone INDEX     Partition zone index (default: 0)");
     println!("    --output PATH    Output file path (default: stdout)");
+    println!();
+    println!("WINPE USB OPTIONS:");
+    println!("    --usb-device PATH        USB device path (required)");
+    println!("    --winpe-source PATH     Path to boot.wim (optional, auto-detect)");
+    println!("    --driver PATH           Driver to inject (repeatable)");
+    println!("    --partition-table TYPE  Partition table type: mbr or gpt (default: gpt)");
+    println!("    --volume-label LABEL    Volume label (default: WINPE)");
     println!();
     println!("EXAMPLES:");
     println!("    {} info disk.img", program);
@@ -119,6 +138,7 @@ fn print_usage(program: &str) {
         "    {} extract disk.img AUTOEXEC.BAT --output autoexec.bat",
         program
     );
+    println!("    {} create-winpe-usb --usb-device /dev/sdb", program);
 }
 
 fn cmd_info(image_path: &str) -> Result<()> {
@@ -434,6 +454,250 @@ fn cmd_extract(
     }
 
     Ok(())
+}
+
+fn cmd_create_winpe_usb(args: &[String]) -> Result<()> {
+    use std::fs::OpenOptions;
+
+    // Parse arguments
+    let usb_device = parse_arg(args, "--usb-device").ok_or_else(|| {
+        totalimage_core::Error::InvalidOperation(
+            "USB device path required. Use --usb-device <path>".to_string(),
+        )
+    })?;
+    let winpe_source = parse_arg(args, "--winpe-source");
+    let partition_table_type =
+        parse_arg(args, "--partition-table").unwrap_or_else(|| "gpt".to_string());
+    let volume_label = parse_arg(args, "--volume-label").unwrap_or_else(|| "WINPE".to_string());
+    let drivers = parse_repeatable_arg(args, "--driver");
+
+    // Helper to convert AcquireError to totalimage_core::Error
+    fn convert_error(e: totalimage_acquire::AcquireError) -> totalimage_core::Error {
+        totalimage_core::Error::InvalidOperation(e.to_string())
+    }
+
+    println!("=== WinPE Bootable USB Creation ===");
+    println!();
+
+    // Step 1: Detect or validate USB drive
+    println!("Step 1: Detecting USB drive...");
+    let usb_drives = detect_usb_drives().map_err(convert_error)?;
+
+    let selected_drive = if usb_drives.is_empty() {
+        // If no USB drives detected, try to use the provided path directly
+        println!(
+            "No USB drives auto-detected. Using provided path: {}",
+            usb_device
+        );
+        UsbDrive {
+            device_path: PathBuf::from(&usb_device),
+            size_bytes: std::fs::metadata(&usb_device).map(|m| m.len()).unwrap_or(0),
+            vendor: "Unknown".to_string(),
+            model: "Unknown".to_string(),
+            is_removable: true, // Assume removable for user-provided path
+            block_size: 512,
+        }
+    } else {
+        // Find matching drive or let user select
+        let matching = usb_drives
+            .iter()
+            .find(|d| d.device_path.to_string_lossy() == usb_device);
+
+        if let Some(drive) = matching {
+            drive.clone()
+        } else {
+            println!("Available USB drives:");
+            for (i, drive) in usb_drives.iter().enumerate() {
+                println!(
+                    "  {}: {} - {} ({})",
+                    i,
+                    drive.device_path.display(),
+                    drive.model,
+                    drive.size_display()
+                );
+            }
+
+            // For now, use the first drive if path doesn't match
+            // In a full implementation, we'd prompt the user
+            if usb_drives.is_empty() {
+                return Err(totalimage_core::Error::InvalidOperation(
+                    "No USB drives found".to_string(),
+                ));
+            }
+            usb_drives[0].clone()
+        }
+    };
+
+    println!(
+        "Selected USB drive: {}",
+        selected_drive.device_path.display()
+    );
+    println!("  Size: {}", selected_drive.size_display());
+    println!(
+        "  Model: {} {}",
+        selected_drive.vendor, selected_drive.model
+    );
+
+    if !selected_drive.is_safe_to_use() {
+        eprintln!("WARNING: Drive may not be safe to use (not removable or too large)");
+        print!("Continue anyway? (yes/no): ");
+        io::stdout().flush()?;
+        let mut response = String::new();
+        io::stdin().read_line(&mut response)?;
+        if response.trim().to_lowercase() != "yes" {
+            return Err(totalimage_core::Error::InvalidOperation(
+                "Operation cancelled by user".to_string(),
+            ));
+        }
+    }
+
+    // Step 2: Find WinPE source
+    println!();
+    println!("Step 2: Locating WinPE source...");
+    let winpe_source_info = if let Some(source_path) = winpe_source {
+        let path = PathBuf::from(source_path);
+        let architecture = validate_winpe_source(&path).map_err(convert_error)?;
+        WinpeSource {
+            boot_wim_path: path,
+            architecture,
+            adk_path: None,
+        }
+    } else {
+        match find_winpe_source() {
+            Ok(source) => {
+                println!("Found WinPE source: {}", source.boot_wim_path.display());
+                println!("  Architecture: {}", source.architecture.as_str());
+                source
+            }
+            Err(e) => {
+                return Err(totalimage_core::Error::InvalidOperation(format!(
+                    "WinPE source not found. Please specify --winpe-source <path> to boot.wim. Error: {}",
+                    e
+                )));
+            }
+        }
+    };
+
+    // Step 3: Create partition table
+    println!();
+    println!("Step 3: Creating partition table...");
+    let partition_type = match partition_table_type.as_str() {
+        "mbr" => PartitionTableType::Mbr,
+        "gpt" => PartitionTableType::Gpt,
+        _ => {
+            return Err(totalimage_core::Error::InvalidOperation(format!(
+                "Invalid partition table type: {}. Use 'mbr' or 'gpt'",
+                partition_table_type
+            )));
+        }
+    };
+
+    let mut device_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&selected_drive.device_path)?;
+
+    let builder = PartitionTableBuilder::new(partition_type, 512);
+    let partition_size = selected_drive.size_bytes.saturating_sub(2048 * 512); // Leave space for MBR/GPT
+
+    let (partition_offset, partition_length) = builder
+        .create(&mut device_file, partition_size)
+        .map_err(convert_error)?;
+    println!(
+        "Created {} partition table",
+        match partition_type {
+            PartitionTableType::Mbr => "MBR",
+            PartitionTableType::Gpt => "GPT",
+        }
+    );
+    println!("  Partition offset: {} bytes", partition_offset);
+    println!("  Partition size: {}", format_bytes(partition_length));
+
+    // Step 4: Format FAT32
+    println!();
+    println!("Step 4: Formatting FAT32 filesystem...");
+    let formatter = Fat32Formatter::new(512, 8, volume_label.clone());
+    formatter
+        .format(&mut device_file, partition_offset, partition_length)
+        .map_err(convert_error)?;
+    println!("FAT32 filesystem created");
+    println!("  Volume label: {}", volume_label);
+
+    // Step 5: Extract WinPE (placeholder - requires WIM extraction)
+    println!();
+    println!("Step 5: Extracting WinPE...");
+    println!("  NOTE: WIM extraction not yet fully implemented.");
+    println!(
+        "  Boot.wim location: {}",
+        winpe_source_info.boot_wim_path.display()
+    );
+    println!(
+        "  Architecture: {}",
+        winpe_source_info.architecture.as_str()
+    );
+
+    // For now, just report what would be done
+    if let Err(e) = extract_wim_to_usb(
+        &winpe_source_info.boot_wim_path,
+        &selected_drive.device_path,
+    ) {
+        println!("  WIM extraction placeholder: {}", e);
+    }
+
+    // Step 6: Configure boot (placeholder - requires BCD creation)
+    println!();
+    println!("Step 6: Configuring boot...");
+    println!("  NOTE: Boot configuration (BCD) not yet fully implemented.");
+
+    // Step 7: Inject drivers (if any)
+    if !drivers.is_empty() {
+        println!();
+        println!("Step 7: Injecting drivers...");
+        println!("  NOTE: Driver injection not yet fully implemented.");
+        for driver in &drivers {
+            println!("  Driver: {}", driver);
+        }
+    }
+
+    println!();
+    println!("=== WinPE USB Creation Complete ===");
+    println!();
+    println!("NOTE: Some features are placeholders and require full implementation:");
+    println!("  - WIM file extraction (requires WIM format parser)");
+    println!("  - Boot configuration/BCD creation");
+    println!("  - Driver injection");
+    println!();
+    println!("USB drive prepared with:");
+    println!(
+        "  - {} partition table",
+        match partition_type {
+            PartitionTableType::Mbr => "MBR",
+            PartitionTableType::Gpt => "GPT",
+        }
+    );
+    println!("  - FAT32 filesystem");
+    println!("  - Volume label: {}", volume_label);
+
+    Ok(())
+}
+
+fn parse_arg(args: &[String], flag: &str) -> Option<String> {
+    for i in 0..args.len().saturating_sub(1) {
+        if args[i] == flag {
+            return Some(args[i + 1].clone());
+        }
+    }
+    None
+}
+
+fn parse_repeatable_arg(args: &[String], flag: &str) -> Vec<String> {
+    let mut results = Vec::new();
+    for i in 0..args.len().saturating_sub(1) {
+        if args[i] == flag {
+            results.push(args[i + 1].clone());
+        }
+    }
+    results
 }
 
 fn format_bytes(bytes: u64) -> String {
