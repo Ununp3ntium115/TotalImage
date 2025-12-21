@@ -9,6 +9,7 @@
 //! This crate implements the "write" side of TotalImage for FTK Imager replacement.
 
 pub mod error;
+pub mod format;
 pub mod hash;
 pub mod partition;
 pub mod progress;
@@ -17,6 +18,7 @@ pub mod usb;
 pub mod vhd;
 
 pub use error::{AcquireError, Result};
+pub use format::Fat32Formatter;
 pub use hash::{HashAlgorithm, HashResult, Hasher};
 pub use partition::{PartitionTableBuilder, PartitionTableType};
 pub use progress::{AcquireProgress, ProgressCallback};

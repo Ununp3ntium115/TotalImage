@@ -2575,6 +2575,7 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "totalimage-core",
+ "totalimage-territories",
  "totalimage-vaults",
  "totalimage-zones",
 ]
