@@ -1,0 +1,14 @@
+[package]
+name = "totalimage-integration-tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+totalimage-core = { path = "../crates/totalimage-core" }
+totalimage-pipeline = { path = "../crates/totalimage-pipeline" }
+totalimage-vaults = { path = "../crates/totalimage-vaults" }
+totalimage-zones = { path = "../crates/totalimage-zones" }
+totalimage-territories = { path = "../crates/totalimage-territories" }
+tempfile = { workspace = true }
+
