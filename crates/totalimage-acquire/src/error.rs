@@ -55,4 +55,8 @@ pub enum AcquireError {
     /// Internal error
     #[error("Internal error: {0}")]
     Internal(String),
+
+    /// Unsupported platform or feature
+    #[error("Unsupported: {0}")]
+    UnsupportedPlatform(String),
 }

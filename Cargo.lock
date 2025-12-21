@@ -2576,6 +2576,7 @@ dependencies = [
  "thiserror 1.0.69",
  "totalimage-core",
  "totalimage-vaults",
+ "totalimage-zones",
 ]
 
 [[package]]

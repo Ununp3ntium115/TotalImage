@@ -10,6 +10,7 @@
 
 pub mod error;
 pub mod hash;
+pub mod partition;
 pub mod progress;
 pub mod raw;
 pub mod usb;
@@ -17,6 +18,7 @@ pub mod vhd;
 
 pub use error::{AcquireError, Result};
 pub use hash::{HashAlgorithm, HashResult, Hasher};
+pub use partition::{PartitionTableBuilder, PartitionTableType};
 pub use progress::{AcquireProgress, ProgressCallback};
 pub use raw::{AcquireOptions, RawAcquirer};
 pub use usb::{detect_usb_drives, UsbDrive};

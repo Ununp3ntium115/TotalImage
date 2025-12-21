@@ -11,6 +11,7 @@ keywords = ["disk-image", "forensics", "acquisition", "dd", "vhd"]
 [dependencies]
 totalimage-core = { path = "../totalimage-core" }
 totalimage-vaults = { path = "../totalimage-vaults" }
+totalimage-zones = { path = "../totalimage-zones" }
 thiserror.workspace = true
 md-5.workspace = true
 sha1.workspace = true
