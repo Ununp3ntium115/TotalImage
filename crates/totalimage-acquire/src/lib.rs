@@ -20,7 +20,7 @@ pub mod winpe;
 
 pub use error::{AcquireError, Result};
 pub use format::Fat32Formatter;
-pub use hash::{HashAlgorithm, HashResult, Hasher};
+pub use hash::{hash_reader, HashAlgorithm, HashResult, Hasher};
 pub use partition::{PartitionTableBuilder, PartitionTableType};
 pub use progress::{AcquireProgress, ProgressCallback};
 pub use raw::{AcquireOptions, RawAcquirer};

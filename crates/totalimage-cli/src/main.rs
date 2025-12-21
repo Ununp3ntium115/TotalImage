@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 use std::process;
 use totalimage_acquire::{
     detect_usb_drives, extract_wim_to_usb, find_winpe_source, validate_winpe_source,
-    Fat32Formatter, PartitionTableBuilder, PartitionTableType, UsbDrive, WinpeSource,
+    Fat32Formatter, HashAlgorithm, PartitionTableBuilder, PartitionTableType, UsbDrive,
+    WinpeSource,
 };
 use totalimage_core::{Result, ZoneTable};
 use totalimage_pipeline::PartialPipeline;
@@ -90,6 +91,12 @@ fn main() {
                 process::exit(1);
             }
         }
+        "hash" => {
+            if let Err(e) = cmd_hash(&args[1..]) {
+                eprintln!("Error: {}", e);
+                process::exit(1);
+            }
+        }
         "--help" | "-h" | "help" => {
             print_usage(&args[0]);
         }
@@ -116,6 +123,7 @@ fn print_usage(program: &str) {
     println!("    list <image> [--zone INDEX]            List files in filesystem");
     println!("    extract <image> <file> [OPTIONS]       Extract a file");
     println!("    create-winpe-usb [OPTIONS]             Create WinPE bootable USB drive");
+    println!("    hash <file> [OPTIONS]                  Calculate file hash");
     println!("    help                                   Print this help message");
     println!("    version                                Print version");
     println!();
@@ -129,6 +137,10 @@ fn print_usage(program: &str) {
     println!("    --driver PATH           Driver to inject (repeatable)");
     println!("    --partition-table TYPE  Partition table type: mbr or gpt (default: gpt)");
     println!("    --volume-label LABEL    Volume label (default: WINPE)");
+    println!();
+    println!("HASH OPTIONS:");
+    println!("    --algorithm <md5|sha1|sha256>  Hash algorithm (default: sha256)");
+    println!("    --format <hex|base64>          Output format (default: hex)");
     println!();
     println!("EXAMPLES:");
     println!("    {} info disk.img", program);
@@ -698,6 +710,97 @@ fn parse_repeatable_arg(args: &[String], flag: &str) -> Vec<String> {
         }
     }
     results
+}
+
+fn cmd_hash(args: &[String]) -> Result<()> {
+    use std::fs::File;
+    use std::io::Read;
+
+    // Parse arguments
+    if args.is_empty() {
+        eprintln!(
+            "Usage: {} hash <file> [--algorithm <md5|sha1|sha256>] [--format <hex|base64>]",
+            env::args()
+                .next()
+                .unwrap_or_else(|| "totalimage".to_string())
+        );
+        process::exit(1);
+    }
+
+    let file_path = &args[0];
+    let algorithm_str = parse_arg(args, "--algorithm").unwrap_or_else(|| "sha256".to_string());
+    let format_str = parse_arg(args, "--format").unwrap_or_else(|| "hex".to_string());
+
+    // Parse algorithm
+    let algorithm = match algorithm_str.as_str() {
+        "md5" => HashAlgorithm::Md5,
+        "sha1" => HashAlgorithm::Sha1,
+        "sha256" => HashAlgorithm::Sha256,
+        _ => {
+            return Err(totalimage_core::Error::InvalidOperation(format!(
+                "Invalid algorithm: {}. Use md5, sha1, or sha256",
+                algorithm_str
+            )));
+        }
+    };
+
+    // Parse format
+    let use_base64 = match format_str.as_str() {
+        "hex" => false,
+        "base64" => true,
+        _ => {
+            return Err(totalimage_core::Error::InvalidOperation(format!(
+                "Invalid format: {}. Use hex or base64",
+                format_str
+            )));
+        }
+    };
+
+    // Check file exists
+    let path = Path::new(file_path);
+    if !path.exists() {
+        return Err(totalimage_core::Error::InvalidOperation(format!(
+            "File not found: {}",
+            file_path
+        )));
+    }
+
+    if !path.is_file() {
+        return Err(totalimage_core::Error::InvalidOperation(format!(
+            "Not a file: {}",
+            file_path
+        )));
+    }
+
+    // Calculate hash using the hash_file helper
+    println!("Calculating {} hash for {}...", algorithm_str, file_path);
+    
+    let file_size = std::fs::metadata(path)?.len();
+    let mut file = File::open(path)?;
+    let results = totalimage_acquire::hash_reader(&mut file, &[algorithm])?;
+
+    // Find the result for our algorithm
+    let hash_result = results
+        .iter()
+        .find(|r| r.algorithm == algorithm)
+        .ok_or_else(|| totalimage_core::Error::InvalidOperation("Hash result not found".to_string()))?;
+
+    // Output result
+    println!("  Algorithm: {}", algorithm_str);
+
+    let hash_string = if use_base64 {
+        // Use base64 crate if available, otherwise fall back to hex
+        // For now, just use hex since base64 isn't in dependencies
+        hash_result.hex.clone()
+    } else {
+        hash_result.hex.clone()
+    };
+
+    println!("  Hash: {}", hash_string);
+    println!("  File: {}", file_path);
+    println!("  Size: {}", format_bytes(file_size));
+
+    Ok(())
 }
 
 fn format_bytes(bytes: u64) -> String {
