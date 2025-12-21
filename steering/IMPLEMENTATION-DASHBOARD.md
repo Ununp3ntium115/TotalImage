@@ -141,10 +141,12 @@
 ## CI/CD Status
 
 ### Pipeline Status
-- **Last Run:** [Will be updated after first run]
-- **Status:** ⏳ Not Run Yet
-- **Branch:** [Current branch]
-- **Commits:** [Will track commits]
+- **Last Run:** December 21, 2025 (Iteration 10.1.1 commit)
+- **Status:** 🔄 In Progress
+- **Branch:** master
+- **Recent Commits:** 
+  - Iteration 10.1.1: USB Drive Detection
+  - Iteration 9: Security hardening and integration tests
 
 ### Recent PRs
 - [Will track PRs as they are created]
@@ -165,7 +167,8 @@
 - ✅ Fixed failing metrics test
 - ✅ Task 9.2: Integration tests framework complete (6 tests passing)
 - ✅ Committed and pushed to master branch
-- 🔄 Waiting for CI/CD pipeline completion and review
+- ✅ Iteration 10.1.1: USB Drive Detection implemented (Linux support, Windows/macOS stubs)
+- 🔄 CI/CD pipeline: CodeQL running successfully, Rust CI workflow monitoring
 
 ---
 
