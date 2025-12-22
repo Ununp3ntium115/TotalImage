@@ -29,7 +29,7 @@ use totalimage_core::{
 };
 use totalimage_mcp::{auth_middleware, AuthConfig};
 use totalimage_pipeline::PartialPipeline;
-use totalimage_territories::{FatTerritory, IsoTerritory, NtfsTerritory};
+use totalimage_territories::{ExfatTerritory, FatTerritory, IsoTerritory, NtfsTerritory};
 use totalimage_vaults::{open_vault, VaultConfig};
 use totalimage_zones::{GptZoneTable, MbrZoneTable};
 use tower::limit::ConcurrencyLimitLayer;
@@ -696,6 +696,68 @@ fn get_vault_files(
         }
     }
 
+    // Try exFAT
+    {
+        let mut cursor = Cursor::new(&zone_data[..]);
+        if let Ok(exfat) = ExfatTerritory::parse(&mut cursor) {
+            let fs_type = exfat.identify().to_string();
+            cursor.seek(SeekFrom::Start(0))?;
+            if let Ok(entries) = exfat.read_root_directory(&mut cursor) {
+                // Convert ExfatDirectoryEntry to OccupantInfo
+                let occupant_entries: Vec<totalimage_core::OccupantInfo> = entries
+                    .into_iter()
+                    .map(|entry| {
+                        // Convert exFAT timestamps (u32) to chrono::DateTime
+                        // exFAT timestamps are in DOS format: seconds since 1980-01-01
+                        use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+                        let created = {
+                            let (year, month, day, hour, minute, second) =
+                                totalimage_territories::exfat::types::FileDirectoryEntry::decode_timestamp(entry.created);
+                            NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)
+                                .and_then(|date| NaiveTime::from_hms_opt(hour as u32, minute as u32, second as u32)
+                                    .map(|time| NaiveDateTime::new(date, time)))
+                                .map(|ndt| DateTime::from_naive_utc_and_offset(ndt, Utc))
+                        };
+                        let modified = {
+                            let (year, month, day, hour, minute, second) =
+                                totalimage_territories::exfat::types::FileDirectoryEntry::decode_timestamp(entry.modified);
+                            NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)
+                                .and_then(|date| NaiveTime::from_hms_opt(hour as u32, minute as u32, second as u32)
+                                    .map(|time| NaiveDateTime::new(date, time)))
+                                .map(|ndt| DateTime::from_naive_utc_and_offset(ndt, Utc))
+                        };
+                        let accessed = {
+                            let (year, month, day, hour, minute, second) =
+                                totalimage_territories::exfat::types::FileDirectoryEntry::decode_timestamp(entry.accessed);
+                            NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)
+                                .and_then(|date| NaiveTime::from_hms_opt(hour as u32, minute as u32, second as u32)
+                                    .map(|time| NaiveDateTime::new(date, time)))
+                                .map(|ndt| DateTime::from_naive_utc_and_offset(ndt, Utc))
+                        };
+
+                        totalimage_core::OccupantInfo {
+                            name: entry.name.clone(),
+                            is_directory: entry.is_directory(),
+                            size: entry.size,
+                            created,
+                            modified,
+                            accessed,
+                            attributes: entry.attributes.0 as u32,
+                        }
+                    })
+                    .collect();
+                return build_files_response(
+                    image_path,
+                    zone_index,
+                    fs_type,
+                    occupant_entries,
+                    offset,
+                    limit,
+                );
+            }
+        }
+    }
+
     // Try ISO - ISO needs DirectoryRecord, use root directory
     {
         let mut cursor = Cursor::new(&zone_data[..]);
@@ -910,14 +972,55 @@ fn extract_file_from_vault(
         data
     };
 
-    let cursor = Cursor::new(zone_data);
+    let cursor = Cursor::new(zone_data.clone());
     if let Ok(mut ntfs) = NtfsTerritory::parse(cursor) {
         if let Ok(data) = ntfs.extract_file(file_path) {
             return Ok(data);
         }
     }
 
-    // TODO: Add exFAT and ISO extraction support
+    // Try exFAT
+    partial.seek(SeekFrom::Start(0))?;
+    {
+        let mut cursor = Cursor::new(zone_data.clone());
+        if let Ok(exfat) = ExfatTerritory::parse(&mut cursor) {
+            cursor.seek(SeekFrom::Start(0))?;
+            if let Ok(entry) = exfat.find_entry_by_path(&mut cursor, file_path) {
+                if !entry.is_directory() {
+                    cursor.seek(SeekFrom::Start(0))?;
+                    let data = exfat.read_file(&mut cursor, &entry)?;
+                    return Ok(data);
+                }
+            }
+        }
+    }
+
+    // Try ISO
+    partial.seek(SeekFrom::Start(0))?;
+    {
+        let mut cursor = Cursor::new(&zone_data[..]);
+        if let Ok(iso) = IsoTerritory::parse(&mut cursor) {
+            // ISO files are accessed by path - need to navigate directory structure
+            // For now, try to find file in root directory
+            cursor.seek(SeekFrom::Start(0))?;
+            let root_record = iso.primary_descriptor().root_directory_record.clone();
+            if let Ok(dir_entries) = iso.read_directory(&mut cursor, &root_record) {
+                // Find matching file in root
+                for dir_entry in dir_entries {
+                    if !dir_entry.is_directory() {
+                        let entry_name = dir_entry.file_name();
+                        if entry_name == file_path
+                            || entry_name == file_path.trim_start_matches('/')
+                        {
+                            // Read file data from ISO using read_file method
+                            let data = iso.read_file(&mut cursor, &dir_entry)?;
+                            return Ok(data);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     Err(totalimage_core::Error::invalid_operation(format!(
         "File not found or filesystem not supported: {}",

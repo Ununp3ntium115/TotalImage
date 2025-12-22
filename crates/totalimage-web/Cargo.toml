@@ -17,6 +17,7 @@ totalimage-vaults = { path = "../totalimage-vaults" }
 totalimage-zones = { path = "../totalimage-zones" }
 totalimage-territories = { path = "../totalimage-territories" }
 totalimage-mcp = { path = "../totalimage-mcp" }
+chrono.workspace = true
 axum.workspace = true
 axum-server.workspace = true
 tokio.workspace = true

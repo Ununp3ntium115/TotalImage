@@ -774,7 +774,7 @@ fn cmd_hash(args: &[String]) -> Result<()> {
 
     // Calculate hash using the hash_file helper
     println!("Calculating {} hash for {}...", algorithm_str, file_path);
-    
+
     let file_size = std::fs::metadata(path)?.len();
     let mut file = File::open(path)?;
     let results = totalimage_acquire::hash_reader(&mut file, &[algorithm])?;
@@ -783,7 +783,9 @@ fn cmd_hash(args: &[String]) -> Result<()> {
     let hash_result = results
         .iter()
         .find(|r| r.algorithm == algorithm)
-        .ok_or_else(|| totalimage_core::Error::InvalidOperation("Hash result not found".to_string()))?;
+        .ok_or_else(|| {
+            totalimage_core::Error::InvalidOperation("Hash result not found".to_string())
+        })?;
 
     // Output result
     println!("  Algorithm: {}", algorithm_str);
