@@ -188,9 +188,7 @@ impl IsoTerritory {
             pos += record_length;
 
             // Skip padding to align to even byte boundary
-            if pos % 2 != 0 {
-                pos += 1;
-            }
+            pos = (pos + 1) & !1; // Round up to next even number
         }
 
         Ok(entries)

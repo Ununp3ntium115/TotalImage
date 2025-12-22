@@ -503,10 +503,11 @@ impl DirectoryRecord {
 
         // Parse Rock Ridge extensions from System Use area
         // System Use area starts after file identifier + padding to even offset
-        let mut system_use_start = id_end;
-        if !system_use_start.is_multiple_of(2) {
-            system_use_start += 1; // Pad to even byte
-        }
+        let system_use_start = if id_end % 2 == 0 {
+            id_end
+        } else {
+            id_end + 1 // Pad to even byte
+        };
 
         let rock_ridge = if system_use_start < length as usize {
             let system_use_data = &bytes[system_use_start..length as usize];

@@ -173,6 +173,7 @@
 - ✅ Iteration 10.2.1: WinPE Source Detection (Windows ADK detection, WIM validation)
 - ✅ Iteration 10.3: CLI Integration (create-winpe-usb command with full workflow)
 - ✅ Iteration 11.1: GPT Backup Header Validation (read and validate backup GPT header)
+- ✅ Iteration 11.2: ISO Joliet Extension (parse UTF-16BE filenames)
 - ✅ Iteration 11.4: CLI Hash Command (MD5/SHA1/SHA256 support)
 - ✅ Iteration 11.5: exFAT/ISO Extraction (web API support for both filesystems)
 - ⏳ Iteration 10.2.2-10.2.4: WIM extraction, boot config, driver injection (placeholders)
