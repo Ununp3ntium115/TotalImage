@@ -284,6 +284,157 @@ impl PrimaryVolumeDescriptor {
     }
 }
 
+/// Supplementary Volume Descriptor (used by Joliet)
+///
+/// Similar structure to Primary Volume Descriptor, but uses UCS-2 (UTF-16BE) encoding
+#[derive(Debug, Clone)]
+pub struct SupplementaryVolumeDescriptor {
+    pub descriptor_type: u8,
+    pub identifier: [u8; 5],
+    pub version: u8,
+    pub system_identifier: [u8; 32],
+    pub volume_identifier: [u8; 32], // UCS-2 encoded
+    pub volume_space_size: BothEndian<u32>,
+    pub volume_set_size: BothEndian<u16>,
+    pub volume_sequence_number: BothEndian<u16>,
+    pub logical_block_size: BothEndian<u16>,
+    pub path_table_size: BothEndian<u32>,
+    pub l_path_table: u32,
+    pub m_path_table: u32,
+    pub root_directory_record: DirectoryRecord,
+    pub volume_set_identifier: [u8; 128],
+    pub publisher_identifier: [u8; 128],
+    pub data_preparer_identifier: [u8; 128],
+    pub application_identifier: [u8; 128],
+    pub copyright_file_identifier: [u8; 37],
+    pub abstract_file_identifier: [u8; 37],
+    pub bibliographic_file_identifier: [u8; 37],
+    pub volume_creation_date: IsoDateTime,
+    pub volume_modification_date: IsoDateTime,
+    pub volume_expiration_date: IsoDateTime,
+    pub volume_effective_date: IsoDateTime,
+    pub file_structure_version: u8,
+}
+
+impl SupplementaryVolumeDescriptor {
+    /// Parse from a 2048-byte sector
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < SECTOR_SIZE {
+            return None;
+        }
+
+        let descriptor_type = bytes[0];
+        let mut identifier = [0u8; 5];
+        identifier.copy_from_slice(&bytes[1..6]);
+        let version = bytes[6];
+
+        // Check for valid ISO-9660 identifier
+        if &identifier != b"CD001" {
+            return None;
+        }
+
+        let mut system_identifier = [0u8; 32];
+        system_identifier.copy_from_slice(&bytes[8..40]);
+
+        let mut volume_identifier = [0u8; 32];
+        volume_identifier.copy_from_slice(&bytes[40..72]);
+
+        let volume_space_size = BothEndian::<u32>::from_bytes(&bytes[80..88])?;
+        let volume_set_size = BothEndian::<u16>::from_bytes(&bytes[120..124])?;
+        let volume_sequence_number = BothEndian::<u16>::from_bytes(&bytes[124..128])?;
+        let logical_block_size = BothEndian::<u16>::from_bytes(&bytes[128..132])?;
+        let path_table_size = BothEndian::<u32>::from_bytes(&bytes[132..140])?;
+
+        let l_path_table = u32::from_le_bytes([bytes[140], bytes[141], bytes[142], bytes[143]]);
+        let m_path_table = u32::from_be_bytes([bytes[151], bytes[152], bytes[153], bytes[154]]);
+
+        // Parse root directory record (34 bytes at offset 156)
+        let root_directory_record = DirectoryRecord::from_bytes(&bytes[156..190])?;
+
+        let mut volume_set_identifier = [0u8; 128];
+        volume_set_identifier.copy_from_slice(&bytes[190..318]);
+
+        let mut publisher_identifier = [0u8; 128];
+        publisher_identifier.copy_from_slice(&bytes[318..446]);
+
+        let mut data_preparer_identifier = [0u8; 128];
+        data_preparer_identifier.copy_from_slice(&bytes[446..574]);
+
+        let mut application_identifier = [0u8; 128];
+        application_identifier.copy_from_slice(&bytes[574..702]);
+
+        let mut copyright_file_identifier = [0u8; 37];
+        copyright_file_identifier.copy_from_slice(&bytes[702..739]);
+
+        let mut abstract_file_identifier = [0u8; 37];
+        abstract_file_identifier.copy_from_slice(&bytes[739..776]);
+
+        let mut bibliographic_file_identifier = [0u8; 37];
+        bibliographic_file_identifier.copy_from_slice(&bytes[776..813]);
+
+        let volume_creation_date = IsoDateTime::from_bytes(&bytes[813..820])?;
+        let volume_modification_date = IsoDateTime::from_bytes(&bytes[830..837])?;
+        let volume_expiration_date = IsoDateTime::from_bytes(&bytes[847..854])?;
+        let volume_effective_date = IsoDateTime::from_bytes(&bytes[864..871])?;
+        let file_structure_version = bytes[881];
+
+        Some(Self {
+            descriptor_type,
+            identifier,
+            version,
+            system_identifier,
+            volume_identifier,
+            volume_space_size,
+            volume_set_size,
+            volume_sequence_number,
+            logical_block_size,
+            path_table_size,
+            l_path_table,
+            m_path_table,
+            root_directory_record,
+            volume_set_identifier,
+            publisher_identifier,
+            data_preparer_identifier,
+            application_identifier,
+            copyright_file_identifier,
+            abstract_file_identifier,
+            bibliographic_file_identifier,
+            volume_creation_date,
+            volume_modification_date,
+            volume_expiration_date,
+            volume_effective_date,
+            file_structure_version,
+        })
+    }
+
+    /// Check if this is a Joliet descriptor
+    ///
+    /// Joliet is detected by checking for escape sequences in the volume identifier:
+    /// - Level 1: %/@
+    /// - Level 2: %/C
+    /// - Level 3: %/E
+    pub fn is_joliet(&self) -> bool {
+        let identifier = &self.volume_identifier[..];
+        // Check for Joliet escape sequences (first 3 bytes)
+        identifier.len() >= 3
+            && (identifier[0..3] == *b"%/@"
+                || identifier[0..3] == *b"%/C"
+                || identifier[0..3] == *b"%/E")
+    }
+
+    /// Get the volume label as a UTF-16BE string (Joliet)
+    pub fn volume_label_utf16be(&self) -> String {
+        // Volume identifier is UCS-2 (UTF-16BE) encoded
+        let utf16: Vec<u16> = self
+            .volume_identifier
+            .chunks_exact(2)
+            .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
+            .take_while(|&c| c != 0)
+            .collect();
+        String::from_utf16_lossy(&utf16).trim().to_string()
+    }
+}
+
 /// Directory Record (variable length)
 #[derive(Debug, Clone)]
 pub struct DirectoryRecord {
@@ -391,7 +542,20 @@ impl DirectoryRecord {
     }
 
     /// Get the file name as a string
+    ///
+    /// # Arguments
+    ///
+    /// * `is_joliet` - If true, parse filename as UTF-16BE (Joliet), otherwise ASCII (ISO-9660)
     pub fn file_name(&self) -> String {
+        self.file_name_with_joliet(false)
+    }
+
+    /// Get the file name as a string with Joliet support
+    ///
+    /// # Arguments
+    ///
+    /// * `is_joliet` - If true, parse filename as UTF-16BE (Joliet), otherwise ASCII (ISO-9660)
+    pub fn file_name_with_joliet(&self, is_joliet: bool) -> String {
         // Check for Rock Ridge alternate name first (long filename support)
         if let Some(ref rr) = self.rock_ridge {
             if let Some(ref alt_name) = rr.alternate_name {
@@ -399,7 +563,7 @@ impl DirectoryRecord {
             }
         }
 
-        // Fall back to ISO-9660 filename
+        // Fall back to ISO-9660 or Joliet filename
         if self.file_identifier.is_empty() {
             return String::from(".");
         }
@@ -413,14 +577,40 @@ impl DirectoryRecord {
             }
         }
 
-        // Parse ISO filename (may include version number like ";1")
-        let name = String::from_utf8_lossy(&self.file_identifier).to_string();
+        if is_joliet {
+            // Joliet uses UTF-16BE (UCS-2) encoding
+            // File identifier length must be even (2 bytes per character)
+            if self.file_identifier.len() % 2 != 0 {
+                // Invalid Joliet encoding, fall back to ASCII
+                return String::from_utf8_lossy(&self.file_identifier).to_string();
+            }
 
-        // Remove version number if present (e.g., "FILE.TXT;1" -> "FILE.TXT")
-        if let Some(semicolon_pos) = name.find(';') {
-            name[..semicolon_pos].to_string()
+            // Parse UTF-16BE characters
+            let utf16: Vec<u16> = self
+                .file_identifier
+                .chunks_exact(2)
+                .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
+                .take_while(|&c| c != 0 && c != 0x002F) // Stop at null or '/' (version separator)
+                .collect();
+
+            let name = String::from_utf16_lossy(&utf16);
+
+            // Remove version number if present (Joliet uses '/' instead of ';')
+            if let Some(slash_pos) = name.find('/') {
+                name[..slash_pos].to_string()
+            } else {
+                name
+            }
         } else {
-            name
+            // ISO-9660 uses ASCII encoding
+            let name = String::from_utf8_lossy(&self.file_identifier).to_string();
+
+            // Remove version number if present (e.g., "FILE.TXT;1" -> "FILE.TXT")
+            if let Some(semicolon_pos) = name.find(';') {
+                name[..semicolon_pos].to_string()
+            } else {
+                name
+            }
         }
     }
 }

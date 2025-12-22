@@ -8,19 +8,23 @@ pub mod types;
 use std::io::SeekFrom;
 use totalimage_core::{DirectoryCell, Error, OccupantInfo, ReadSeek, Result, Territory};
 use types::{
-    DirectoryRecord, PrimaryVolumeDescriptor, VolumeDescriptorType, SECTOR_SIZE,
-    VOLUME_DESCRIPTOR_START,
+    DirectoryRecord, PrimaryVolumeDescriptor, SupplementaryVolumeDescriptor, VolumeDescriptorType,
+    SECTOR_SIZE, VOLUME_DESCRIPTOR_START,
 };
 
 /// ISO-9660 file system territory
 ///
 /// Supports basic ISO-9660 (CD-ROM) file systems with directory enumeration
 /// and file data access. Read-only by design.
+///
+/// Also supports Joliet extensions (UTF-16BE filenames) when detected.
 #[derive(Debug)]
 pub struct IsoTerritory {
     primary_descriptor: PrimaryVolumeDescriptor,
+    supplementary_descriptor: Option<SupplementaryVolumeDescriptor>,
     root_directory: DirectoryRecord,
     identifier: String,
+    is_joliet: bool,
 }
 
 impl IsoTerritory {
@@ -38,6 +42,7 @@ impl IsoTerritory {
         stream.seek(SeekFrom::Start(VOLUME_DESCRIPTOR_START))?;
 
         let mut primary_descriptor: Option<PrimaryVolumeDescriptor> = None;
+        let mut supplementary_descriptor: Option<SupplementaryVolumeDescriptor> = None;
 
         // Read volume descriptors until we find terminator
         loop {
@@ -65,14 +70,21 @@ impl IsoTerritory {
                             )
                         })?);
                 }
+                Some(VolumeDescriptorType::SupplementaryVolumeDescriptor) => {
+                    // Parse supplementary descriptor (may be Joliet)
+                    if let Some(supp) = SupplementaryVolumeDescriptor::from_bytes(&sector) {
+                        if supp.is_joliet() {
+                            supplementary_descriptor = Some(supp);
+                        }
+                    }
+                }
                 Some(VolumeDescriptorType::VolumeDescriptorSetTerminator) => {
                     // End of volume descriptor set
                     break;
                 }
-                Some(VolumeDescriptorType::SupplementaryVolumeDescriptor)
-                | Some(VolumeDescriptorType::BootRecord)
+                Some(VolumeDescriptorType::BootRecord)
                 | Some(VolumeDescriptorType::VolumePartitionDescriptor) => {
-                    // Skip these for now (could handle Joliet, El Torito, etc.)
+                    // Skip these (El Torito, etc.)
                 }
                 None => {
                     return Err(Error::invalid_territory(format!(
@@ -88,21 +100,44 @@ impl IsoTerritory {
             Error::invalid_territory("No primary volume descriptor found".to_string())
         })?;
 
-        // Get root directory record from primary descriptor
-        let root_directory = primary.root_directory_record.clone();
+        // Determine if Joliet is present
+        let is_joliet = supplementary_descriptor.is_some();
 
-        let identifier = "ISO-9660 filesystem".to_string();
+        // Get root directory record (prefer Joliet if available)
+        let root_directory = if let Some(ref supp) = supplementary_descriptor {
+            supp.root_directory_record.clone()
+        } else {
+            primary.root_directory_record.clone()
+        };
+
+        let identifier = if is_joliet {
+            "ISO-9660 filesystem (Joliet)".to_string()
+        } else {
+            "ISO-9660 filesystem".to_string()
+        };
 
         Ok(Self {
             primary_descriptor: primary,
+            supplementary_descriptor,
             root_directory,
             identifier,
+            is_joliet,
         })
     }
 
     /// Get the primary volume descriptor
     pub fn primary_descriptor(&self) -> &PrimaryVolumeDescriptor {
         &self.primary_descriptor
+    }
+
+    /// Get the supplementary volume descriptor (Joliet) if present
+    pub fn supplementary_descriptor(&self) -> Option<&SupplementaryVolumeDescriptor> {
+        self.supplementary_descriptor.as_ref()
+    }
+
+    /// Check if this is a Joliet filesystem
+    pub fn is_joliet(&self) -> bool {
+        self.is_joliet
     }
 
     /// Read directory entries from a directory record
@@ -144,7 +179,7 @@ impl IsoTerritory {
             // Parse directory record
             if let Some(record) = DirectoryRecord::from_bytes(&data[pos..pos + record_length]) {
                 // Skip "." and ".." entries
-                let name = record.file_name();
+                let name = record.file_name_with_joliet(self.is_joliet);
                 if name != "." && name != ".." {
                     entries.push(record);
                 }
