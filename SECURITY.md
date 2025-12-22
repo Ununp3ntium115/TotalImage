@@ -79,14 +79,19 @@ All parsers implement defense-in-depth validation:
 3. **Resource Exhaustion**: Large valid disk images can still consume significant memory
 4. **Denial of Service**: Web API has no rate limiting (planned for production)
 
+### Implemented Security Features
+
+- [x] Fuzzing harness (5 targets: MBR, GPT, FAT BPB, VHD footer, E01 header)
+- [x] Rate limiting on web API endpoints (100 req/s via governor)
+- [x] CORS policy configuration
+- [x] Authentication (JWT) for API access
+- [x] VHD chain depth limit (MAX_VHD_CHAIN_DEPTH = 10)
+- [x] AFF4 LRU cache limits (64 MB / 256 entries)
+
 ### Not Implemented (Future Work)
 
-- [ ] Fuzzing harness for automated vulnerability discovery
-- [ ] Rate limiting on web API endpoints
 - [ ] Request size limits on API payloads
-- [ ] CORS policy configuration
-- [ ] TLS/HTTPS support for web server
-- [ ] Authentication/authorization for API access
+- [ ] TLS/HTTPS support for web server (use reverse proxy)
 - [ ] Audit logging for security events
 - [ ] Sandboxing for parser execution
 
@@ -146,7 +151,36 @@ For production deployments:
 - [ ] Monitor security advisories for Rust ecosystem
 - [ ] Review logs for suspicious patterns
 
+## Accepted Risks
+
+### RUSTSEC-2025-0134: rustls-pemfile Unmaintained
+
+**Status:** Accepted (Warning only, not a vulnerability)
+**Date Assessed:** 2025-12-22
+**Review Date:** 2026-03-22
+
+The `rustls-pemfile` crate is marked as unmaintained. This affects:
+- `reqwest 0.11.x` → `rustls-pemfile 1.0.4`
+- `axum-server 0.7.x` → `rustls-pemfile 2.2.0`
+
+**Risk Assessment:**
+- This is NOT a security vulnerability, only a maintenance status warning
+- The crate is still functional and has no known security issues
+- PEM file parsing is a simple, stable operation
+- TotalImage only uses rustls-pemfile for TLS certificate loading
+
+**Mitigation:**
+- Monitor for upstream updates to reqwest/axum-server
+- Consider migration to `rustls-pki-types` when available in dependencies
+- Re-evaluate quarterly or when vulnerabilities are discovered
+
 ## Security Audit History
+
+- **2025-12-22**: Dependency security update
+  - Upgraded prometheus 0.13 → 0.14 (fixed RUSTSEC-2024-0437)
+  - Upgraded protobuf 2.28.0 → 3.7.2 (fixed uncontrolled recursion crash)
+  - Documented rustls-pemfile warning as accepted risk
+  - Verified all P0 and P1 security issues resolved
 
 - **2025-11-22**: Initial security hardening
   - Added security validation module
@@ -177,5 +211,5 @@ For security-related questions or concerns:
 
 ---
 
-**Last Updated**: 2025-11-22
+**Last Updated**: 2025-12-22
 **Version**: 0.1.0
