@@ -627,18 +627,17 @@ mod tests {
     }
 
     #[test]
-    fn test_read_backup_header() {
+    fn test_read_backup_header() -> Result<()> {
         let gpt_data = create_test_gpt();
         let mut cursor = Cursor::new(gpt_data);
 
         // Parse primary header first
-        let table = GptZoneTable::parse(&mut cursor, 512).unwrap();
+        let table = GptZoneTable::parse(&mut cursor, 512)?;
         let primary_header = table.header();
 
         // Read backup header
         cursor.seek(SeekFrom::Start(0))?;
-        let backup_header =
-            GptZoneTable::read_backup_header(&mut cursor, primary_header, 512).unwrap();
+        let backup_header = GptZoneTable::read_backup_header(&mut cursor, primary_header, 512)?;
 
         // Verify backup header signature
         assert_eq!(&backup_header.signature, b"EFI PART");
@@ -666,7 +665,7 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_backup_header() {
+    fn test_validate_backup_header() -> Result<()> {
         let gpt_data = create_test_gpt();
         let mut cursor = Cursor::new(gpt_data);
 
@@ -677,8 +676,7 @@ mod tests {
             GptConfig {
                 validate_backup_header: true,
             },
-        )
-        .unwrap();
+        )?;
 
         // Backup header should be present
         assert!(table.backup_header().is_some());
@@ -687,16 +685,17 @@ mod tests {
         let primary = table.header();
 
         // Validate should succeed
-        assert!(GptZoneTable::validate_backup_header(primary, backup).is_ok());
+        GptZoneTable::validate_backup_header(primary, backup)?;
+        Ok(())
     }
 
     #[test]
-    fn test_validate_backup_header_mismatch() {
+    fn test_validate_backup_header_mismatch() -> Result<()> {
         let gpt_data = create_test_gpt();
         let mut cursor = Cursor::new(gpt_data);
 
         // Parse primary header
-        let table = GptZoneTable::parse(&mut cursor, 512).unwrap();
+        let table = GptZoneTable::parse(&mut cursor, 512)?;
         let primary = table.header();
 
         // Create a backup header with mismatched disk GUID
@@ -707,10 +706,11 @@ mod tests {
         let result = GptZoneTable::validate_backup_header(primary, &backup);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("disk GUID"));
+        Ok(())
     }
 
     #[test]
-    fn test_parse_with_backup_validation_disabled() {
+    fn test_parse_with_backup_validation_disabled() -> Result<()> {
         let gpt_data = create_test_gpt();
         let mut cursor = Cursor::new(gpt_data);
 
@@ -721,15 +721,15 @@ mod tests {
             GptConfig {
                 validate_backup_header: false,
             },
-        )
-        .unwrap();
+        )?;
 
         // Backup header should not be present
         assert!(table.backup_header().is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_backup_header_crc32_validation() {
+    fn test_backup_header_crc32_validation() -> Result<()> {
         let mut gpt_data = create_test_gpt();
         // Corrupt backup header CRC32
         let backup_header_offset = 999 * 512;
@@ -738,7 +738,7 @@ mod tests {
         let mut cursor = Cursor::new(gpt_data);
 
         // Parse primary header
-        let table = GptZoneTable::parse(&mut cursor, 512).unwrap();
+        let table = GptZoneTable::parse(&mut cursor, 512)?;
         let primary_header = table.header();
 
         // Reading backup header should fail due to CRC32 mismatch
@@ -746,5 +746,6 @@ mod tests {
         let result = GptZoneTable::read_backup_header(&mut cursor, primary_header, 512);
         assert!(result.is_err());
         assert!(matches!(result, Err(Error::ChecksumVerification(_))));
+        Ok(())
     }
 }
