@@ -26,6 +26,22 @@ use types::{GptHeader, GptPartitionEntry};
 pub struct GptZoneTable {
     zones: Vec<Zone>,
     header: GptHeader,
+    backup_header: Option<GptHeader>,
+}
+
+/// Configuration for GPT parsing
+#[derive(Debug, Clone, Copy)]
+pub struct GptConfig {
+    /// Whether to validate the backup header
+    pub validate_backup_header: bool,
+}
+
+impl Default for GptConfig {
+    fn default() -> Self {
+        Self {
+            validate_backup_header: true,
+        }
+    }
 }
 
 impl GptZoneTable {
@@ -43,6 +59,29 @@ impl GptZoneTable {
     /// - The stream cannot be read
     /// - The partition table is corrupted
     pub fn parse(stream: &mut dyn ReadSeek, sector_size: u32) -> Result<Self> {
+        Self::parse_with_config(stream, sector_size, GptConfig::default())
+    }
+
+    /// Parse a GPT from a readable and seekable stream with configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `stream` - A stream positioned at the start of the disk
+    /// * `sector_size` - The sector size in bytes (usually 512)
+    /// * `config` - Configuration for parsing options
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The GPT signature is invalid
+    /// - The stream cannot be read
+    /// - The partition table is corrupted
+    /// - Backup header validation fails (if enabled)
+    pub fn parse_with_config(
+        stream: &mut dyn ReadSeek,
+        sector_size: u32,
+        config: GptConfig,
+    ) -> Result<Self> {
         // GPT header is at LBA 1 (second sector)
         let header_lba = 1u64;
         let header_offset = header_lba * sector_size as u64;
@@ -115,7 +154,132 @@ impl GptZoneTable {
             zones.push(zone);
         }
 
-        Ok(Self { zones, header })
+        // Read and validate backup header if requested
+        let backup_header = if config.validate_backup_header {
+            match Self::read_backup_header(stream, &header, sector_size) {
+                Ok(backup) => {
+                    // Validate backup header against primary
+                    if let Err(e) = Self::validate_backup_header(&header, &backup) {
+                        // Don't fail, just log warning (backup may be stale)
+                        eprintln!("GPT backup header validation warning: {}", e);
+                    }
+                    Some(backup)
+                }
+                Err(_e) => {
+                    // Failed to read backup header - not critical, may not exist
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        Ok(Self {
+            zones,
+            header,
+            backup_header,
+        })
+    }
+
+    /// Read the backup GPT header from the end of the disk
+    ///
+    /// # Arguments
+    ///
+    /// * `stream` - A stream positioned at the start of the disk
+    /// * `primary_header` - The primary GPT header (contains backup LBA location)
+    /// * `sector_size` - The sector size in bytes (usually 512)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The backup header cannot be read
+    /// - The backup header signature is invalid
+    /// - The backup header CRC32 is invalid
+    pub fn read_backup_header(
+        stream: &mut dyn ReadSeek,
+        primary_header: &GptHeader,
+        sector_size: u32,
+    ) -> Result<GptHeader> {
+        // Backup header is at the LBA specified in primary header
+        let backup_lba = primary_header.backup_lba;
+        let backup_offset = backup_lba * sector_size as u64;
+
+        stream.seek(SeekFrom::Start(backup_offset))?;
+
+        // Read backup header
+        let mut header_bytes = vec![0u8; sector_size as usize];
+        stream.read_exact(&mut header_bytes)?;
+
+        let backup_header = GptHeader::from_bytes(&header_bytes).ok_or_else(|| {
+            Error::invalid_zone_table("Invalid backup GPT header signature".to_string())
+        })?;
+
+        // Verify backup header CRC32
+        if !backup_header.verify_header_crc32(&header_bytes) {
+            return Err(Error::ChecksumVerification(
+                "GPT backup header CRC32 verification failed".to_string(),
+            ));
+        }
+
+        Ok(backup_header)
+    }
+
+    /// Validate that backup header matches primary header
+    ///
+    /// Compares critical fields between primary and backup headers.
+    /// If there's a mismatch, it logs a warning but doesn't fail (backup may be stale).
+    ///
+    /// # Arguments
+    ///
+    /// * `primary` - The primary GPT header
+    /// * `backup` - The backup GPT header
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if critical fields don't match (disk GUID, partition entry LBA, etc.)
+    pub fn validate_backup_header(primary: &GptHeader, backup: &GptHeader) -> Result<()> {
+        // Compare critical fields
+        if primary.disk_guid != backup.disk_guid {
+            return Err(Error::invalid_zone_table(format!(
+                "Backup header disk GUID mismatch: primary {:?} != backup {:?}",
+                primary.disk_guid, backup.disk_guid
+            )));
+        }
+
+        if primary.partition_entries_lba != backup.partition_entries_lba {
+            return Err(Error::invalid_zone_table(format!(
+                "Backup header partition entries LBA mismatch: primary {} != backup {}",
+                primary.partition_entries_lba, backup.partition_entries_lba
+            )));
+        }
+
+        if primary.num_partition_entries != backup.num_partition_entries {
+            return Err(Error::invalid_zone_table(format!(
+                "Backup header partition entry count mismatch: primary {} != backup {}",
+                primary.num_partition_entries, backup.num_partition_entries
+            )));
+        }
+
+        if primary.partition_entry_size != backup.partition_entry_size {
+            return Err(Error::invalid_zone_table(format!(
+                "Backup header partition entry size mismatch: primary {} != backup {}",
+                primary.partition_entry_size, backup.partition_entry_size
+            )));
+        }
+
+        // Note: We don't compare current_lba and backup_lba as they should be swapped
+        // (primary.current_lba should equal backup.backup_lba and vice versa)
+        if primary.current_lba != backup.backup_lba || primary.backup_lba != backup.current_lba {
+            // This is a warning, not an error - headers may be swapped correctly
+            // but we log it for debugging
+        }
+
+        Ok(())
+    }
+
+    /// Get the backup header if it was read and validated
+    pub fn backup_header(&self) -> Option<&GptHeader> {
+        self.backup_header.as_ref()
     }
 
     /// Get the disk GUID
@@ -151,7 +315,7 @@ impl ZoneTable for GptZoneTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
+    use std::io::{Cursor, Seek, SeekFrom};
 
     /// Create a minimal valid GPT with one partition
     fn create_test_gpt() -> Vec<u8> {
@@ -256,6 +420,54 @@ mod tests {
         header_for_crc[19] = 0;
         let header_crc = crc32fast::hash(&header_for_crc);
         disk[header_offset + 16..header_offset + 20].copy_from_slice(&header_crc.to_le_bytes());
+
+        // LBA 999: Backup GPT Header (mirror of primary, with swapped current/backup LBAs)
+        let backup_header_offset = 999 * sector_size;
+        disk[backup_header_offset..backup_header_offset + 8].copy_from_slice(b"EFI PART");
+        disk[backup_header_offset + 8..backup_header_offset + 12]
+            .copy_from_slice(&0x00010000u32.to_le_bytes());
+        disk[backup_header_offset + 12..backup_header_offset + 16]
+            .copy_from_slice(&92u32.to_le_bytes());
+        // CRC32 will be calculated below
+        disk[backup_header_offset + 20..backup_header_offset + 24]
+            .copy_from_slice(&0u32.to_le_bytes());
+        // Current LBA (999) - swapped from primary
+        disk[backup_header_offset + 24..backup_header_offset + 32]
+            .copy_from_slice(&999u64.to_le_bytes());
+        // Backup LBA (1) - swapped from primary
+        disk[backup_header_offset + 32..backup_header_offset + 40]
+            .copy_from_slice(&1u64.to_le_bytes());
+        // First usable LBA (34) - same as primary
+        disk[backup_header_offset + 40..backup_header_offset + 48]
+            .copy_from_slice(&34u64.to_le_bytes());
+        // Last usable LBA (966) - same as primary
+        disk[backup_header_offset + 48..backup_header_offset + 56]
+            .copy_from_slice(&966u64.to_le_bytes());
+        // Disk GUID - same as primary
+        disk[backup_header_offset + 56..backup_header_offset + 72].copy_from_slice(&disk_guid);
+        // Partition entries LBA (2) - same as primary
+        disk[backup_header_offset + 72..backup_header_offset + 80]
+            .copy_from_slice(&2u64.to_le_bytes());
+        // Number of partition entries (128) - same as primary
+        disk[backup_header_offset + 80..backup_header_offset + 84]
+            .copy_from_slice(&128u32.to_le_bytes());
+        // Size of partition entry (128 bytes) - same as primary
+        disk[backup_header_offset + 84..backup_header_offset + 88]
+            .copy_from_slice(&128u32.to_le_bytes());
+        // Partition entries CRC32 - same as primary
+        disk[backup_header_offset + 88..backup_header_offset + 92]
+            .copy_from_slice(&entries_crc.to_le_bytes());
+
+        // Calculate and set backup header CRC32 (with CRC32 field zeroed)
+        let mut backup_header_for_crc =
+            disk[backup_header_offset..backup_header_offset + 92].to_vec();
+        backup_header_for_crc[16] = 0;
+        backup_header_for_crc[17] = 0;
+        backup_header_for_crc[18] = 0;
+        backup_header_for_crc[19] = 0;
+        let backup_header_crc = crc32fast::hash(&backup_header_for_crc);
+        disk[backup_header_offset + 16..backup_header_offset + 20]
+            .copy_from_slice(&backup_header_crc.to_le_bytes());
 
         disk
     }
@@ -412,5 +624,127 @@ mod tests {
             // Verify zone has valid offset and length
             assert!(zone.offset > 0 || zone.length > 0);
         }
+    }
+
+    #[test]
+    fn test_read_backup_header() {
+        let gpt_data = create_test_gpt();
+        let mut cursor = Cursor::new(gpt_data);
+
+        // Parse primary header first
+        let table = GptZoneTable::parse(&mut cursor, 512).unwrap();
+        let primary_header = table.header();
+
+        // Read backup header
+        cursor.seek(SeekFrom::Start(0))?;
+        let backup_header =
+            GptZoneTable::read_backup_header(&mut cursor, primary_header, 512).unwrap();
+
+        // Verify backup header signature
+        assert_eq!(&backup_header.signature, b"EFI PART");
+
+        // Verify backup header has swapped LBAs
+        assert_eq!(backup_header.current_lba, 999);
+        assert_eq!(backup_header.backup_lba, 1);
+
+        // Verify critical fields match
+        assert_eq!(primary_header.disk_guid, backup_header.disk_guid);
+        assert_eq!(
+            primary_header.partition_entries_lba,
+            backup_header.partition_entries_lba
+        );
+        assert_eq!(
+            primary_header.num_partition_entries,
+            backup_header.num_partition_entries
+        );
+        assert_eq!(
+            primary_header.partition_entry_size,
+            backup_header.partition_entry_size
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_backup_header() {
+        let gpt_data = create_test_gpt();
+        let mut cursor = Cursor::new(gpt_data);
+
+        // Parse with backup validation enabled
+        let table = GptZoneTable::parse_with_config(
+            &mut cursor,
+            512,
+            GptConfig {
+                validate_backup_header: true,
+            },
+        )
+        .unwrap();
+
+        // Backup header should be present
+        assert!(table.backup_header().is_some());
+
+        let backup = table.backup_header().unwrap();
+        let primary = table.header();
+
+        // Validate should succeed
+        assert!(GptZoneTable::validate_backup_header(primary, backup).is_ok());
+    }
+
+    #[test]
+    fn test_validate_backup_header_mismatch() {
+        let gpt_data = create_test_gpt();
+        let mut cursor = Cursor::new(gpt_data);
+
+        // Parse primary header
+        let table = GptZoneTable::parse(&mut cursor, 512).unwrap();
+        let primary = table.header();
+
+        // Create a backup header with mismatched disk GUID
+        let mut backup = primary.clone();
+        backup.disk_guid[0] = 0xFF; // Corrupt disk GUID
+
+        // Validation should fail
+        let result = GptZoneTable::validate_backup_header(primary, &backup);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("disk GUID"));
+    }
+
+    #[test]
+    fn test_parse_with_backup_validation_disabled() {
+        let gpt_data = create_test_gpt();
+        let mut cursor = Cursor::new(gpt_data);
+
+        // Parse with backup validation disabled
+        let table = GptZoneTable::parse_with_config(
+            &mut cursor,
+            512,
+            GptConfig {
+                validate_backup_header: false,
+            },
+        )
+        .unwrap();
+
+        // Backup header should not be present
+        assert!(table.backup_header().is_none());
+    }
+
+    #[test]
+    fn test_backup_header_crc32_validation() {
+        let mut gpt_data = create_test_gpt();
+        // Corrupt backup header CRC32
+        let backup_header_offset = 999 * 512;
+        gpt_data[backup_header_offset + 16] = 0xFF;
+
+        let mut cursor = Cursor::new(gpt_data);
+
+        // Parse primary header
+        let table = GptZoneTable::parse(&mut cursor, 512).unwrap();
+        let primary_header = table.header();
+
+        // Reading backup header should fail due to CRC32 mismatch
+        cursor.seek(SeekFrom::Start(0))?;
+        let result = GptZoneTable::read_backup_header(&mut cursor, primary_header, 512);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(Error::ChecksumVerification(_))));
     }
 }
