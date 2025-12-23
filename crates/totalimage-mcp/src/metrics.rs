@@ -193,7 +193,7 @@ mod tests {
         let metric_families = prometheus::gather();
         let tool_calls = metric_families
             .iter()
-            .find(|mf| mf.name == "totalimage_mcp_tool_calls_total");
+            .find(|mf| mf.get_name().as_deref() == Some("totalimage_mcp_tool_calls_total"));
         assert!(tool_calls.is_some());
     }
 
@@ -205,7 +205,7 @@ mod tests {
         let metric_families = prometheus::gather();
         let cache_ops = metric_families
             .iter()
-            .find(|mf| mf.name == "totalimage_mcp_cache_operations_total");
+            .find(|mf| mf.get_name().as_deref() == Some("totalimage_mcp_cache_operations_total"));
         assert!(cache_ops.is_some());
     }
 

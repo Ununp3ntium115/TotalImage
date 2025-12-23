@@ -5,11 +5,11 @@
 //! NOTE: Full integration tests require test fixtures (actual disk images).
 //! Run with: `cargo test --test integration -- --include-ignored` to see fixture requirements.
 
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 use std::path::Path;
 use tempfile::NamedTempFile;
 
-use totalimage_core::{Result, Vault, ZoneTable};
+use totalimage_core::{Result, ZoneTable};
 use totalimage_integration_tests::utils;
 use totalimage_vaults::factory::detect_vault_type;
 use totalimage_zones::MbrZoneTable;
