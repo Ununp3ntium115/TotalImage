@@ -168,11 +168,11 @@ impl VhdFooter {
         })
     }
 
-    /// Verify the footer checksum
+    /// Calculate the footer checksum
     ///
     /// The checksum is the one's complement of the sum of all bytes in the
     /// footer, with the checksum field itself set to zero during calculation.
-    pub fn verify_checksum(&self) -> bool {
+    pub fn calculate_checksum(&self) -> u32 {
         // Serialize footer back to bytes
         let mut bytes = [0u8; Self::SIZE];
         self.serialize(&mut bytes);
@@ -188,9 +188,15 @@ impl VhdFooter {
         }
 
         // One's complement
-        let calculated = !sum;
+        !sum
+    }
 
-        calculated == self.checksum
+    /// Verify the footer checksum
+    ///
+    /// The checksum is the one's complement of the sum of all bytes in the
+    /// footer, with the checksum field itself set to zero during calculation.
+    pub fn verify_checksum(&self) -> bool {
+        self.calculate_checksum() == self.checksum
     }
 
     /// Serialize footer to bytes

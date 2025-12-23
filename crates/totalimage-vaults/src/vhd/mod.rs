@@ -1217,3 +1217,105 @@ mod tests {
         assert_eq!(block_size, 2_097_152);
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use totalimage_core::proptest::*;
+    use types::{DiskGeometry, VhdFooter, VhdType};
+
+    proptest! {
+        #![proptest_config(proptest_config())]
+
+        #[test]
+        fn test_vhd_footer_roundtrip(
+            current_size in disk_size_strategy(),
+            original_size in disk_size_strategy(),
+            disk_type in vhd_disk_type_strategy(),
+            timestamp in 0u32..=u32::MAX,
+        ) {
+            // Step 1: Create a VHD footer with generated properties
+            let mut footer = VhdFooter {
+                cookie: *VhdFooter::COOKIE,
+                features: 0x00000002, // No features
+                version: 0x00010000, // Version 1.0
+                data_offset: 0xFFFFFFFFFFFFFFFF, // Dynamic VHDs
+                timestamp,
+                creator_app: *b"vpc ", // Virtual PC
+                creator_version: 0x00050000,
+                creator_os: 0x00020000, // Windows
+                original_size,
+                current_size,
+                geometry: DiskGeometry {
+                    cylinders: 0,
+                    heads: 0,
+                    sectors: 0,
+                },
+                disk_type: VhdType::from_u32(disk_type).unwrap(),
+                checksum: 0, // Will be calculated
+                uuid: [0u8; 16],
+                saved_state: 0,
+                reserved: [0u8; 427],
+            };
+
+            // Step 2: Calculate and set checksum
+            footer.checksum = footer.calculate_checksum();
+
+            // Step 3: Serialize footer to bytes
+            let mut bytes = [0u8; VhdFooter::SIZE];
+            footer.serialize(&mut bytes);
+
+            // Step 4: Parse footer from bytes
+            let parsed = VhdFooter::parse(&bytes)
+                .expect("Should parse valid footer");
+
+            // Step 5: Verify all properties match
+            prop_assert_eq!(parsed.current_size, current_size);
+            prop_assert_eq!(parsed.original_size, original_size);
+            prop_assert_eq!(parsed.disk_type as u32, disk_type);
+            prop_assert_eq!(parsed.timestamp, timestamp);
+            prop_assert_eq!(parsed.checksum, footer.checksum);
+
+            // Step 6: Verify checksum is valid
+            prop_assert!(parsed.verify_checksum(), "Checksum should be valid");
+        }
+
+        #[test]
+        fn test_vhd_footer_edge_cases(
+            size in prop_oneof![
+                Just(512u64),           // Minimum size
+                Just(2_000_000_000_000u64), // 2TB (max practical)
+            ],
+        ) {
+            // Test edge case sizes
+            let mut footer = VhdFooter {
+                cookie: *VhdFooter::COOKIE,
+                features: 0x00000002,
+                version: 0x00010000,
+                data_offset: 0xFFFFFFFFFFFFFFFF,
+                timestamp: 0,
+                creator_app: *b"vpc ",
+                creator_version: 0x00050000,
+                creator_os: 0x00020000,
+                original_size: size,
+                current_size: size,
+                geometry: DiskGeometry {
+                    cylinders: 0,
+                    heads: 0,
+                    sectors: 0,
+                },
+                disk_type: VhdType::Fixed,
+                checksum: 0,
+                uuid: [0u8; 16],
+                saved_state: 0,
+                reserved: [0u8; 427],
+            };
+            footer.checksum = footer.calculate_checksum();
+
+            let mut bytes = [0u8; VhdFooter::SIZE];
+            footer.serialize(&mut bytes);
+            let parsed = VhdFooter::parse(&bytes).unwrap();
+            prop_assert_eq!(parsed.current_size, size);
+        }
+    }
+}

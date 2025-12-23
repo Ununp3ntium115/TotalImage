@@ -40,6 +40,9 @@ pub mod security;
 pub mod traits;
 pub mod types;
 
+#[cfg(any(test, feature = "proptest"))]
+pub mod proptest;
+
 // Re-export commonly used items
 pub use error::{Error, Result};
 pub use security::*;

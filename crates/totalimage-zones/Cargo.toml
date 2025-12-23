@@ -13,3 +13,6 @@ thiserror.workspace = true
 uuid.workspace = true
 serde.workspace = true
 crc32fast.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
