@@ -191,7 +191,7 @@ impl CHSAddress {
 
         Self {
             cylinder: cylinder.min(1023) as u16, // Cap at max CHS
-            head: head.min(255),
+            head, // u8 is already capped at 255
             sector: sector.min(63),
         }
     }
