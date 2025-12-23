@@ -7,7 +7,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-totalimage-core = { path = "../totalimage-core" }
+totalimage-core = { path = "../totalimage-core", features = ["proptest"] }
 totalimage-pipeline = { path = "../totalimage-pipeline" }
 thiserror.workspace = true
 uuid.workspace = true

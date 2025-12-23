@@ -309,6 +309,73 @@ impl GptHeader {
 
         calculated_crc == self.partition_entries_crc32
     }
+
+    /// Calculate the header CRC32 checksum
+    ///
+    /// This calculates the CRC32 with the CRC32 field itself set to zero.
+    pub fn calculate_header_crc32(&self) -> u32 {
+        // Serialize header to bytes
+        let mut bytes = vec![0u8; self.header_size as usize];
+        self.serialize(&mut bytes);
+
+        // Zero out the CRC32 field (bytes 16-19)
+        bytes[16] = 0;
+        bytes[17] = 0;
+        bytes[18] = 0;
+        bytes[19] = 0;
+
+        // Calculate CRC32
+        crc32fast::hash(&bytes)
+    }
+
+    /// Serialize GPT header to bytes
+    pub fn serialize(&self, bytes: &mut [u8]) {
+        if bytes.len() < self.header_size as usize {
+            return;
+        }
+
+        // Signature (bytes 0-7)
+        bytes[0..8].copy_from_slice(&self.signature);
+
+        // Revision (bytes 8-11)
+        bytes[8..12].copy_from_slice(&self.revision.to_le_bytes());
+
+        // Header size (bytes 12-15)
+        bytes[12..16].copy_from_slice(&self.header_size.to_le_bytes());
+
+        // CRC32 (bytes 16-19) - will be calculated separately
+        bytes[16..20].copy_from_slice(&self.header_crc32.to_le_bytes());
+
+        // Reserved (bytes 20-23)
+        bytes[20..24].copy_from_slice(&self.reserved.to_le_bytes());
+
+        // Current LBA (bytes 24-31)
+        bytes[24..32].copy_from_slice(&self.current_lba.to_le_bytes());
+
+        // Backup LBA (bytes 32-39)
+        bytes[32..40].copy_from_slice(&self.backup_lba.to_le_bytes());
+
+        // First usable LBA (bytes 40-47)
+        bytes[40..48].copy_from_slice(&self.first_usable_lba.to_le_bytes());
+
+        // Last usable LBA (bytes 48-55)
+        bytes[48..56].copy_from_slice(&self.last_usable_lba.to_le_bytes());
+
+        // Disk GUID (bytes 56-71)
+        bytes[56..72].copy_from_slice(&self.disk_guid);
+
+        // Partition entries LBA (bytes 72-79)
+        bytes[72..80].copy_from_slice(&self.partition_entries_lba.to_le_bytes());
+
+        // Number of partition entries (bytes 80-83)
+        bytes[80..84].copy_from_slice(&self.num_partition_entries.to_le_bytes());
+
+        // Partition entry size (bytes 84-87)
+        bytes[84..88].copy_from_slice(&self.partition_entry_size.to_le_bytes());
+
+        // Partition entries CRC32 (bytes 88-91)
+        bytes[88..92].copy_from_slice(&self.partition_entries_crc32.to_le_bytes());
+    }
 }
 
 #[cfg(test)]

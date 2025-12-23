@@ -749,3 +749,101 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use totalimage_core::proptest::*;
+    use types::GptHeader;
+    use uuid::Uuid;
+
+    proptest! {
+        #![proptest_config(proptest_config())]
+
+        #[test]
+        fn test_gpt_header_roundtrip(
+            partition_count in partition_count_strategy(),
+            sector_size in sector_size_strategy(),
+            disk_size in disk_size_strategy(),
+        ) {
+            // Step 1: Create GPT header with generated properties
+            let disk_size_lba = disk_size / sector_size as u64;
+            let backup_lba = if disk_size_lba > 0 { disk_size_lba - 1 } else { 0 };
+            
+            let mut header = GptHeader {
+                signature: *GptHeader::SIGNATURE,
+                revision: 0x00010000, // GPT revision 1.0
+                header_size: 92,
+                header_crc32: 0, // Will be calculated
+                reserved: 0,
+                current_lba: 1,
+                backup_lba,
+                first_usable_lba: 34,
+                last_usable_lba: if disk_size_lba > 34 { disk_size_lba - 34 } else { 0 },
+                disk_guid: {
+                    let uuid = Uuid::new_v4();
+                    let mut guid = [0u8; 16];
+                    guid.copy_from_slice(uuid.as_bytes());
+                    guid
+                },
+                partition_entries_lba: 2,
+                num_partition_entries: partition_count,
+                partition_entry_size: 128,
+                partition_entries_crc32: 0, // Will be calculated separately
+            };
+
+            // Step 2: Calculate CRC32 for header
+            header.header_crc32 = header.calculate_header_crc32();
+
+            // Step 3: Serialize header to bytes
+            let mut bytes = vec![0u8; sector_size as usize];
+            header.serialize(&mut bytes);
+
+            // Step 4: Parse header from bytes
+            let parsed = GptHeader::from_bytes(&bytes)
+                .expect("Should parse valid GPT header");
+
+            // Step 5: Verify all properties match
+            prop_assert_eq!(parsed.num_partition_entries, partition_count);
+            prop_assert_eq!(parsed.current_lba, 1);
+            prop_assert_eq!(parsed.disk_guid, header.disk_guid);
+            prop_assert_eq!(parsed.header_size, 92);
+
+            // Step 6: Verify CRC32 is valid
+            prop_assert!(parsed.verify_header_crc32(&bytes), 
+                "Header CRC32 should be valid");
+        }
+
+        #[test]
+        fn test_gpt_header_edge_cases(
+            count in prop_oneof![
+                Just(0u32),    // Zero partitions
+                Just(128u32),  // Max partitions
+            ],
+        ) {
+            // Test edge cases for partition count
+            let mut header = GptHeader {
+                signature: *GptHeader::SIGNATURE,
+                revision: 0x00010000,
+                header_size: 92,
+                header_crc32: 0,
+                reserved: 0,
+                current_lba: 1,
+                backup_lba: 999,
+                first_usable_lba: 34,
+                last_usable_lba: 966,
+                disk_guid: [0u8; 16],
+                partition_entries_lba: 2,
+                num_partition_entries: count,
+                partition_entry_size: 128,
+                partition_entries_crc32: 0,
+            };
+            header.header_crc32 = header.calculate_header_crc32();
+
+            let mut bytes = vec![0u8; 512];
+            header.serialize(&mut bytes);
+            let parsed = GptHeader::from_bytes(&bytes).unwrap();
+            prop_assert_eq!(parsed.num_partition_entries, count);
+        }
+    }
+}

@@ -9,11 +9,8 @@ pub use proptest::prelude::*;
 /// Strategy for generating valid sector sizes
 #[cfg(any(test, feature = "proptest"))]
 pub fn sector_size_strategy() -> impl proptest::strategy::Strategy<Value = u32> {
-    prop_oneof![
-        Just(512u32),   // Most common
-        Just(4096u32),  // 4K sectors
-        (256u32..=8192u32).prop_filter("Must be power of 2", |&s| s.is_power_of_two()),
-    ]
+    // Generate power-of-2 sector sizes directly
+    (9u32..=13u32).prop_map(|exp| 1u32 << exp) // 512, 1024, 2048, 4096, 8192
 }
 
 /// Strategy for generating valid disk sizes (in bytes)
