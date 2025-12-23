@@ -779,7 +779,7 @@ mod proptests {
                 current_lba: 1,
                 backup_lba,
                 first_usable_lba: 34,
-                last_usable_lba: if disk_size_lba > 34 { disk_size_lba - 34 } else { 0 },
+                last_usable_lba: disk_size_lba.saturating_sub(34),
                 disk_guid: {
                     let uuid = Uuid::new_v4();
                     let mut guid = [0u8; 16];
