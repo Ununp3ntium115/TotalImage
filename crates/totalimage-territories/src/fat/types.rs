@@ -257,6 +257,34 @@ impl BiosParameterBlock {
                 .map_err(|_| Error::invalid_territory("Bytes per cluster exceeds u32".to_string()))
         })
     }
+
+    /// Serialize BPB to boot sector bytes
+    ///
+    /// Writes the BPB fields to a 512-byte boot sector buffer.
+    /// The buffer should be initialized with jump code and OEM name.
+    pub fn serialize(&self, bytes: &mut [u8]) {
+        if bytes.len() < 512 {
+            return;
+        }
+
+        // Common BPB fields (offsets 11-35)
+        bytes[11..13].copy_from_slice(&self.bytes_per_sector.to_le_bytes());
+        bytes[13] = self.sectors_per_cluster;
+        bytes[14..16].copy_from_slice(&self.reserved_sectors.to_le_bytes());
+        bytes[16] = self.num_fats;
+        bytes[17..19].copy_from_slice(&self.root_entries.to_le_bytes());
+        bytes[19..21].copy_from_slice(&self.total_sectors_16.to_le_bytes());
+        bytes[21] = self.media_descriptor;
+        bytes[22..24].copy_from_slice(&self.sectors_per_fat_16.to_le_bytes());
+        bytes[24..26].copy_from_slice(&self.sectors_per_track.to_le_bytes());
+        bytes[26..28].copy_from_slice(&self.num_heads.to_le_bytes());
+        bytes[28..32].copy_from_slice(&self.hidden_sectors.to_le_bytes());
+        bytes[32..36].copy_from_slice(&self.total_sectors_32.to_le_bytes());
+
+        // For FAT32, sectors_per_fat_32 would be at offset 36
+        // But we don't store that separately, so we'd need to calculate it
+        // For now, we'll leave it as-is if it's FAT32
+    }
 }
 
 /// FAT directory entry (32 bytes)

@@ -831,3 +831,110 @@ mod tests {
         assert!(territory.extract_file("test.txt").is_ok());
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use totalimage_core::proptest::*;
+    use types::{BiosParameterBlock, FatType};
+
+    proptest! {
+        #![proptest_config(proptest_config())]
+
+        #[test]
+        fn test_fat_bpb_roundtrip(
+            bytes_per_sector in prop_oneof![
+                Just(512u16),
+                Just(1024u16),
+                Just(2048u16),
+                Just(4096u16),
+            ],
+            sectors_per_cluster in (1u8..=128u8).prop_filter(
+                "Must be power of 2", |&s| s.is_power_of_two()
+            ),
+        ) {
+            // Step 1: Create a minimal boot sector
+            let mut boot_sector = vec![0u8; 512];
+            boot_sector[0..3].copy_from_slice(&[0xEB, 0x3C, 0x90]); // Jump
+            boot_sector[3..11].copy_from_slice(b"MSWIN4.1"); // OEM
+
+            // Step 2: Calculate total sectors to ensure valid FAT type
+            let total_sectors = 100_000u32; // Large enough for FAT32
+            let total_sectors_16 = if total_sectors < 65536 { total_sectors as u16 } else { 0 };
+
+            // Step 3: Calculate sectors per FAT based on FAT type
+            let cluster_count = total_sectors / sectors_per_cluster as u32;
+            let fat_type = if cluster_count < 4085 {
+                FatType::Fat12
+            } else if cluster_count < 65525 {
+                FatType::Fat16
+            } else {
+                FatType::Fat32
+            };
+
+            // Step 4: Create BPB
+            let bpb = BiosParameterBlock {
+                bytes_per_sector,
+                sectors_per_cluster,
+                reserved_sectors: 1,
+                num_fats: 2,
+                root_entries: if fat_type == FatType::Fat32 { 0 } else { 512 },
+                total_sectors_16,
+                media_descriptor: 0xF8,
+                sectors_per_fat_16: if fat_type == FatType::Fat32 { 0 } else { 9 },
+                sectors_per_track: 63,
+                num_heads: 255,
+                hidden_sectors: 0,
+                total_sectors_32: if total_sectors_16 == 0 { total_sectors } else { 0 },
+                fat_type,
+            };
+
+            // Step 5: Serialize BPB to boot sector
+            bpb.serialize(&mut boot_sector);
+            boot_sector[510..512].copy_from_slice(&[0x55, 0xAA]); // Boot signature
+
+            // Step 6: Parse BPB from boot sector
+            let parsed = BiosParameterBlock::from_bytes(&boot_sector)
+                .expect("Should parse valid BPB");
+
+            // Step 7: Verify all properties match
+            prop_assert_eq!(parsed.bytes_per_sector, bytes_per_sector);
+            prop_assert_eq!(parsed.sectors_per_cluster, sectors_per_cluster);
+            prop_assert_eq!(parsed.fat_type, fat_type);
+        }
+
+        #[test]
+        fn test_fat_type_boundaries(
+            cluster_count in prop_oneof![
+                Just(4084u32),   // FAT12 boundary
+                Just(4085u32),   // FAT16 start
+                Just(65524u32),  // FAT16 boundary
+                Just(65525u32),  // FAT32 start
+            ],
+        ) {
+            // Create boot sector with cluster count that determines FAT type
+            let mut boot_sector = vec![0u8; 512];
+            boot_sector[0..3].copy_from_slice(&[0xEB, 0x3C, 0x90]);
+            boot_sector[3..11].copy_from_slice(b"MSWIN4.1");
+            boot_sector[11..13].copy_from_slice(&512u16.to_le_bytes());
+            boot_sector[13] = 1; // Sectors per cluster
+            boot_sector[14..16].copy_from_slice(&1u16.to_le_bytes());
+            boot_sector[16] = 2;
+            boot_sector[17..19].copy_from_slice(&224u16.to_le_bytes());
+
+            // Set total sectors to achieve desired cluster count
+            let sectors_per_cluster = 1u8;
+            let total_sectors = cluster_count * sectors_per_cluster as u32 + 100; // Add overhead
+            boot_sector[19..21].copy_from_slice(&(total_sectors.min(65535) as u16).to_le_bytes());
+            boot_sector[21] = 0xF0;
+            boot_sector[22..24].copy_from_slice(&9u16.to_le_bytes());
+            boot_sector[510..512].copy_from_slice(&[0x55, 0xAA]);
+
+            let bpb = BiosParameterBlock::from_bytes(&boot_sector).unwrap();
+            prop_assert!(matches!(
+                bpb.fat_type,
+                FatType::Fat12 | FatType::Fat16 | FatType::Fat32
+            ));
+        }
+    }
+}

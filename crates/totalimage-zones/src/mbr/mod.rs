@@ -152,6 +152,54 @@ impl MbrZoneTable {
     pub fn is_gpt_protective(&self) -> bool {
         self.zones.iter().any(|z| z.zone_type == "GPT Protective")
     }
+
+    /// Serialize MBR to bytes
+    ///
+    /// Creates a 512-byte MBR sector with partition entries.
+    /// This is primarily for testing and property-based testing.
+    pub fn serialize(&self, sector_size: u32) -> Vec<u8> {
+        let mut mbr = vec![0u8; Self::MBR_SIZE];
+
+        // Write disk signature
+        mbr[Self::DISK_SIGNATURE_OFFSET as usize..Self::DISK_SIGNATURE_OFFSET as usize + 4]
+            .copy_from_slice(&self.disk_signature.to_le_bytes());
+
+        // Write partition entries (up to 4)
+        for (i, zone) in self.zones.iter().take(Self::NUM_PARTITIONS).enumerate() {
+            let entry_offset = Self::PARTITION_TABLE_OFFSET as usize + (i * Self::PARTITION_ENTRY_SIZE);
+
+            // Status byte (0x80 = bootable, 0x00 = not bootable)
+            mbr[entry_offset] = if i == 0 { 0x80 } else { 0x00 };
+
+            // CHS start (simplified - use LBA)
+            let lba_start = (zone.offset / sector_size as u64) as u32;
+            let chs_start = CHSAddress::from_lba(lba_start, 255, 63);
+            mbr[entry_offset + 1..entry_offset + 4].copy_from_slice(&chs_start.to_bytes());
+
+            // Partition type (try to determine from zone_type)
+            let partition_type = MbrPartitionType::from_name(&zone.zone_type)
+                .unwrap_or(MbrPartitionType::Fat32Lba);
+            mbr[entry_offset + 4] = partition_type.to_byte();
+
+            // CHS end (simplified)
+            let lba_end = ((zone.offset + zone.length) / sector_size as u64) as u32 - 1;
+            let chs_end = CHSAddress::from_lba(lba_end, 255, 63);
+            mbr[entry_offset + 5..entry_offset + 8].copy_from_slice(&chs_end.to_bytes());
+
+            // LBA start
+            mbr[entry_offset + 8..entry_offset + 12].copy_from_slice(&lba_start.to_le_bytes());
+
+            // LBA length
+            let lba_length = (zone.length / sector_size as u64) as u32;
+            mbr[entry_offset + 12..entry_offset + 16].copy_from_slice(&lba_length.to_le_bytes());
+        }
+
+        // Write boot signature
+        mbr[Self::BOOT_SIGNATURE_OFFSET as usize..Self::BOOT_SIGNATURE_OFFSET as usize + 2]
+            .copy_from_slice(&Self::BOOT_SIGNATURE.to_le_bytes());
+
+        mbr
+    }
 }
 
 impl ZoneTable for MbrZoneTable {
@@ -356,5 +404,90 @@ mod tests {
         assert_eq!(MAX_CYLINDER, 1023);
         assert_eq!(MAX_HEAD, 255);
         assert_eq!(MAX_SECTOR, 63);
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use totalimage_core::proptest::*;
+    use totalimage_core::Zone;
+
+    proptest! {
+        #![proptest_config(proptest_config())]
+
+        #[test]
+        fn test_mbr_roundtrip(
+            partition_count in 0u8..=4u8,
+            sector_size in sector_size_strategy(),
+            disk_size in disk_size_strategy(),
+        ) {
+            // Step 1: Create MBR with generated partition count
+            let disk_size_lba = disk_size / sector_size as u64;
+            let partition_size = if partition_count > 0 {
+                disk_size_lba / partition_count.max(1) as u64
+            } else {
+                0
+            };
+
+            let mut zones = Vec::new();
+            for i in 0..partition_count {
+                let zone = Zone::new(
+                    i as usize,
+                    (i as u64) * partition_size * sector_size as u64,
+                    partition_size * sector_size as u64,
+                    "FAT32 (LBA)".to_string(),
+                );
+                zones.push(zone);
+            }
+
+            let mbr = MbrZoneTable {
+                zones,
+                disk_signature: 0x12345678,
+                boot_signature: MbrZoneTable::BOOT_SIGNATURE,
+            };
+
+            // Step 2: Serialize MBR to bytes
+            let mbr_bytes = mbr.serialize(sector_size);
+
+            // Step 3: Parse MBR from bytes
+            let mut cursor = std::io::Cursor::new(&mbr_bytes);
+            let parsed = MbrZoneTable::parse(&mut cursor, sector_size)
+                .expect("Should parse valid MBR");
+
+            // Step 4: Verify partition count matches
+            prop_assert_eq!(parsed.zones.len(), partition_count as usize);
+
+            // Step 5: Verify boot signature
+            prop_assert_eq!(parsed.boot_signature(), MbrZoneTable::BOOT_SIGNATURE);
+
+            // Step 6: Verify each partition
+            for (i, zone) in parsed.zones.iter().enumerate() {
+                prop_assert_eq!(zone.index, i);
+                prop_assert!(zone.length > 0, "Partition should have size");
+            }
+        }
+
+        #[test]
+        fn test_mbr_boot_signature_validation(
+            signature in prop_oneof![
+                Just(0xAA55u16),  // Valid
+                Just(0x0000u16),  // Invalid
+                Just(0xFFFFu16),  // Invalid
+            ],
+        ) {
+            // Create MBR with specified boot signature
+            let mut mbr_bytes = vec![0u8; 512];
+            mbr_bytes[0x1FE..0x200].copy_from_slice(&signature.to_le_bytes());
+
+            let mut cursor = std::io::Cursor::new(&mbr_bytes);
+            let result = MbrZoneTable::parse(&mut cursor, 512);
+
+            if signature == 0xAA55 {
+                prop_assert!(result.is_ok());
+            } else {
+                prop_assert!(result.is_err());
+            }
+        }
     }
 }

@@ -103,6 +103,27 @@ impl MbrPartitionType {
             Self::Unknown(_b) => "Unknown",
         }
     }
+
+    /// Create a partition type from a name string
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "Empty" => Some(Self::Empty),
+            "FAT12" => Some(Self::Fat12),
+            "FAT16 (<32MB)" => Some(Self::Fat16Small),
+            "Extended" => Some(Self::Extended),
+            "FAT16" => Some(Self::Fat16),
+            "NTFS/exFAT" => Some(Self::Ntfs),
+            "FAT32 (CHS)" => Some(Self::Fat32Chs),
+            "FAT32 (LBA)" => Some(Self::Fat32Lba),
+            "FAT16 (LBA)" => Some(Self::Fat16Lba),
+            "Extended (LBA)" => Some(Self::ExtendedLba),
+            "Linux swap" => Some(Self::LinuxSwap),
+            "Linux" => Some(Self::LinuxNative),
+            "GPT Protective" => Some(Self::GptProtective),
+            "EFI System" => Some(Self::EfiSystem),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for MbrPartitionType {
@@ -158,6 +179,21 @@ impl CHSAddress {
         let s = (self.sector - 1) as u32; // Sectors are 1-indexed
 
         (c * heads_per_cylinder as u32 + h) * sectors_per_track as u32 + s
+    }
+
+    /// Convert LBA to CHS (approximate, requires disk geometry)
+    pub fn from_lba(lba: u32, heads_per_cylinder: u16, sectors_per_track: u16) -> Self {
+        let sectors_per_cylinder = heads_per_cylinder as u32 * sectors_per_track as u32;
+        let cylinder = lba / sectors_per_cylinder;
+        let remainder = lba % sectors_per_cylinder;
+        let head = (remainder / sectors_per_track as u32) as u8;
+        let sector = ((remainder % sectors_per_track as u32) + 1) as u8; // 1-indexed
+
+        Self {
+            cylinder: cylinder.min(1023) as u16, // Cap at max CHS
+            head: head.min(255),
+            sector: sector.min(63),
+        }
     }
 }
 
