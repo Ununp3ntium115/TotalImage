@@ -8,6 +8,7 @@
 //!
 //! This crate implements the "write" side of TotalImage for FTK Imager replacement.
 
+pub mod e01_writer;
 pub mod error;
 pub mod format;
 pub mod hash;
@@ -18,6 +19,7 @@ pub mod usb;
 pub mod vhd;
 pub mod winpe;
 
+pub use e01_writer::{E01Writer, E01WriterConfig};
 pub use error::{AcquireError, Result};
 pub use format::Fat32Formatter;
 pub use hash::{hash_reader, HashAlgorithm, HashResult, Hasher};

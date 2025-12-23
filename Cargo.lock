@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "adler"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2581,7 +2587,9 @@ dependencies = [
 name = "totalimage-acquire"
 version = "0.1.0"
 dependencies = [
+ "adler",
  "chrono",
+ "flate2",
  "hex",
  "md-5",
  "sha1",

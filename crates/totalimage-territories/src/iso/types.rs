@@ -503,6 +503,7 @@ impl DirectoryRecord {
 
         // Parse Rock Ridge extensions from System Use area
         // System Use area starts after file identifier + padding to even offset
+        #[allow(clippy::manual_is_multiple_of)]
         let system_use_start = if id_end % 2 == 0 {
             id_end
         } else {
@@ -581,6 +582,7 @@ impl DirectoryRecord {
         if is_joliet {
             // Joliet uses UTF-16BE (UCS-2) encoding
             // File identifier length must be even (2 bytes per character)
+            #[allow(clippy::manual_is_multiple_of)]
             if self.file_identifier.len() % 2 != 0 {
                 // Invalid Joliet encoding, fall back to ASCII
                 return String::from_utf8_lossy(&self.file_identifier).to_string();
