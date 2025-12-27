@@ -832,11 +832,10 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
     use totalimage_core::proptest::*;
-    use types::{BiosParameterBlock, FatType};
 
     proptest! {
         #![proptest_config(proptest_config())]
