@@ -254,7 +254,7 @@ fn test_property_test_integration() {
 /// Test concurrent request handling (basic)
 #[test]
 fn test_concurrent_operations() -> Result<()> {
-    use std::io::Cursor;
+    use std::io::{Cursor, Read, Seek};
     use std::sync::Arc;
     use std::thread;
 
@@ -305,6 +305,287 @@ fn test_large_file_handling() -> Result<()> {
     // Should handle large sizes without allocating full buffer
     let pipeline = PartialPipeline::new(cursor, 0, large_size)?;
     assert_eq!(pipeline.length(), large_size);
+
+    Ok(())
+}
+
+/// Test VHD vault with synthetic FAT12 floppy image
+#[test]
+fn test_synthetic_vhd_fat12_vault() -> Result<()> {
+    use std::io::{SeekFrom, Write};
+    use tempfile::NamedTempFile;
+    use totalimage_integration_tests::generators::create_fixed_vhd_with_fat12;
+    use totalimage_vaults::factory::{detect_vault_type, open_vault};
+    use totalimage_vaults::VaultConfig;
+
+    // Generate a synthetic VHD with FAT12
+    let vhd_data = create_fixed_vhd_with_fat12()?;
+
+    // Write to temp file
+    let mut temp_file = NamedTempFile::with_suffix(".vhd")?;
+    temp_file.write_all(&vhd_data)?;
+    temp_file.flush()?;
+
+    // Detect vault type
+    let vault_type = detect_vault_type(temp_file.path())?;
+    assert_eq!(vault_type.name(), "Microsoft VHD");
+
+    // Open the vault
+    let config = VaultConfig::default();
+    let mut vault = open_vault(temp_file.path(), config)?;
+
+    // Verify we can read the boot sector
+    let content = vault.content();
+    content.seek(SeekFrom::Start(0))?;
+    let mut boot_sector = vec![0u8; 512];
+    content.read_exact(&mut boot_sector)?;
+
+    // Check FAT12 boot signature
+    assert_eq!(&boot_sector[510..512], &[0x55, 0xAA]);
+    assert_eq!(&boot_sector[3..11], b"MSWIN4.1");
+
+    // Check bytes per sector
+    let bytes_per_sector = u16::from_le_bytes([boot_sector[11], boot_sector[12]]);
+    assert_eq!(bytes_per_sector, 512);
+
+    Ok(())
+}
+
+/// Test VHD with MBR → FAT32 full pipeline
+#[test]
+fn test_synthetic_vhd_mbr_fat32_pipeline() -> Result<()> {
+    use std::io::{SeekFrom, Write};
+    use tempfile::NamedTempFile;
+    use totalimage_integration_tests::generators::create_vhd_with_mbr_fat32;
+    use totalimage_vaults::factory::open_vault;
+    use totalimage_vaults::VaultConfig;
+    use totalimage_zones::MbrZoneTable;
+
+    // Generate a 10 MB VHD with MBR and FAT32
+    let vhd_data = create_vhd_with_mbr_fat32(10)?;
+
+    // Write to temp file
+    let mut temp_file = NamedTempFile::with_suffix(".vhd")?;
+    temp_file.write_all(&vhd_data)?;
+    temp_file.flush()?;
+
+    // Open vault
+    let config = VaultConfig::default();
+    let mut vault = open_vault(temp_file.path(), config)?;
+
+    // Parse MBR zone table
+    let content = vault.content();
+    content.seek(SeekFrom::Start(0))?;
+    let zone_table = MbrZoneTable::parse(content, 512)?;
+    let zones = zone_table.enumerate_zones();
+
+    // Should have 1 partition
+    assert_eq!(zones.len(), 1, "Should have exactly 1 partition");
+
+    // Check partition details
+    let partition = &zones[0];
+    assert_eq!(partition.offset, 2048 * 512, "Partition should start at sector 2048");
+    assert!(partition.length > 0, "Partition should have non-zero length");
+
+    // Verify we can seek to the partition and read FAT32 boot sector
+    content.seek(SeekFrom::Start(partition.offset))?;
+    let mut fat32_boot = vec![0u8; 512];
+    content.read_exact(&mut fat32_boot)?;
+
+    // Check FAT32 boot signature
+    assert_eq!(&fat32_boot[510..512], &[0x55, 0xAA]);
+
+    // Check FAT32 indicators
+    let root_entries = u16::from_le_bytes([fat32_boot[17], fat32_boot[18]]);
+    assert_eq!(root_entries, 0, "FAT32 should have 0 root entries in BPB");
+
+    Ok(())
+}
+
+/// Test VHD → MBR → FAT32 → Territory parsing pipeline
+#[test]
+fn test_vhd_mbr_fat32_territory_pipeline() -> Result<()> {
+    use std::io::{Seek, SeekFrom, Write};
+    use tempfile::NamedTempFile;
+    use totalimage_integration_tests::generators::create_vhd_with_mbr_fat32;
+    use totalimage_pipeline::PartialPipeline;
+    use totalimage_territories::fat::types::BiosParameterBlock;
+    use totalimage_vaults::factory::open_vault;
+    use totalimage_vaults::VaultConfig;
+    use totalimage_zones::MbrZoneTable;
+
+    // Generate a 10 MB VHD with MBR and FAT32
+    let vhd_data = create_vhd_with_mbr_fat32(10)?;
+
+    // Write to temp file
+    let mut temp_file = NamedTempFile::with_suffix(".vhd")?;
+    temp_file.write_all(&vhd_data)?;
+    temp_file.flush()?;
+
+    // STEP 1: Open vault
+    let config = VaultConfig::default();
+    let mut vault = open_vault(temp_file.path(), config)?;
+
+    // STEP 2: Parse zones (MBR)
+    let content = vault.content();
+    content.seek(SeekFrom::Start(0))?;
+    let zone_table = MbrZoneTable::parse(content, 512)?;
+    let zones = zone_table.enumerate_zones();
+
+    assert_eq!(zones.len(), 1);
+    let partition = &zones[0];
+
+    // STEP 3: Create PartialPipeline for the partition
+    content.seek(SeekFrom::Start(partition.offset))?;
+    let mut pipeline = PartialPipeline::new(content, partition.offset, partition.length)?;
+
+    // STEP 4: Parse FAT32 BPB from the partition
+    pipeline.seek(SeekFrom::Start(0))?;
+    let mut boot_sector = vec![0u8; 512];
+    pipeline.read_exact(&mut boot_sector)?;
+
+    let bpb = BiosParameterBlock::from_bytes(&boot_sector)?;
+
+    // Verify FAT32 BPB fields
+    assert_eq!(bpb.bytes_per_sector, 512);
+    assert_eq!(bpb.root_entries, 0, "FAT32 should have 0 root entries");
+    assert!(bpb.total_sectors() > 0);
+
+    Ok(())
+}
+
+/// Test synthetic FAT12 floppy generation
+#[test]
+fn test_synthetic_fat12_generation() -> Result<()> {
+    use totalimage_integration_tests::generators::create_fat12_floppy;
+    use totalimage_territories::fat::types::BiosParameterBlock;
+
+    let floppy = create_fat12_floppy()?;
+
+    // Check size (1.44 MB = 2880 sectors * 512 bytes)
+    assert_eq!(floppy.len(), 2880 * 512);
+
+    // Parse BPB
+    let bpb = BiosParameterBlock::from_bytes(&floppy[0..512])?;
+    assert_eq!(bpb.bytes_per_sector, 512);
+    assert_eq!(bpb.sectors_per_cluster, 1);
+    assert_eq!(bpb.reserved_sectors, 1);
+    assert_eq!(bpb.num_fats, 2);
+    assert_eq!(bpb.root_entries, 224);
+    assert_eq!(bpb.total_sectors(), 2880);
+
+    // Check FAT entries
+    assert_eq!(floppy[512], 0xF0); // Media descriptor in FAT1
+    assert_eq!(floppy[512 + 1], 0xFF);
+    assert_eq!(floppy[512 + 2], 0xFF);
+
+    Ok(())
+}
+
+/// Test VHD footer generation and validation
+#[test]
+fn test_vhd_footer_generation() {
+    use totalimage_integration_tests::generators::create_vhd_footer;
+
+    let disk_size = 1024 * 1024 * 10; // 10 MB
+    let footer = create_vhd_footer(disk_size, 2); // Fixed disk
+
+    // Check cookie
+    assert_eq!(&footer[0..8], b"conectix");
+
+    // Check file format version
+    let version = u32::from_be_bytes([footer[12], footer[13], footer[14], footer[15]]);
+    assert_eq!(version, 0x00010000);
+
+    // Check disk type (2 = fixed)
+    let disk_type = u32::from_be_bytes([footer[60], footer[61], footer[62], footer[63]]);
+    assert_eq!(disk_type, 2);
+
+    // Verify checksum
+    let stored_checksum = u32::from_be_bytes([footer[64], footer[65], footer[66], footer[67]]);
+
+    let mut calculated_checksum: u32 = 0;
+    for i in 0..512 {
+        if i < 64 || i >= 68 {
+            calculated_checksum = calculated_checksum.wrapping_add(footer[i] as u32);
+        }
+    }
+    calculated_checksum = !calculated_checksum;
+
+    assert_eq!(stored_checksum, calculated_checksum, "VHD footer checksum mismatch");
+}
+
+/// Test MBR generation
+#[test]
+fn test_mbr_generation() -> Result<()> {
+    use totalimage_integration_tests::generators::create_mbr_with_fat32_partition;
+    use totalimage_zones::MbrZoneTable;
+
+    let mbr = create_mbr_with_fat32_partition(204800); // ~100 MB partition
+
+    // Check boot signature
+    assert_eq!(&mbr[510..512], &[0x55, 0xAA]);
+
+    // Parse with MbrZoneTable
+    let mut cursor = std::io::Cursor::new(mbr);
+    let table = MbrZoneTable::parse(&mut cursor, 512)?;
+    let zones = table.enumerate_zones();
+
+    assert_eq!(zones.len(), 1);
+    assert_eq!(zones[0].offset, 2048 * 512);
+    assert_eq!(zones[0].length, 204800 * 512);
+
+    Ok(())
+}
+
+/// Test concurrent vault access with synthetic images
+#[test]
+fn test_concurrent_vault_access() -> Result<()> {
+    use std::io::Write;
+    use std::sync::Arc;
+    use std::thread;
+    use tempfile::NamedTempFile;
+    use totalimage_integration_tests::generators::create_fixed_vhd_with_fat12;
+    use totalimage_vaults::factory::open_vault;
+    use totalimage_vaults::VaultConfig;
+
+    // Generate VHD
+    let vhd_data = create_fixed_vhd_with_fat12()?;
+
+    // Write to temp file
+    let mut temp_file = NamedTempFile::with_suffix(".vhd")?;
+    temp_file.write_all(&vhd_data)?;
+    temp_file.flush()?;
+
+    // Get path and share it
+    let path = Arc::new(temp_file.into_temp_path());
+
+    // Spawn multiple threads that open the vault concurrently
+    let handles: Vec<_> = (0..4)
+        .map(|_| {
+            let path = Arc::clone(&path);
+            thread::spawn(move || -> Result<()> {
+                let config = VaultConfig::default();
+                let mut vault = open_vault(&*path, config)?;
+
+                // Read boot sector
+                let content = vault.content();
+                content.seek(std::io::SeekFrom::Start(0))?;
+                let mut boot = vec![0u8; 512];
+                content.read_exact(&mut boot)?;
+
+                // Verify signature
+                assert_eq!(&boot[510..512], &[0x55, 0xAA]);
+
+                Ok(())
+            })
+        })
+        .collect();
+
+    // Wait for all threads
+    for handle in handles {
+        handle.join().unwrap()?;
+    }
 
     Ok(())
 }
