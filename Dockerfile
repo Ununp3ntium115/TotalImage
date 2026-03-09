@@ -4,7 +4,7 @@
 # ============================================
 # Stage 1: Builder
 # ============================================
-FROM rust:1.75-bookworm AS builder
+FROM rust:1-trixie AS builder
 
 WORKDIR /build
 
@@ -60,7 +60,7 @@ FROM debian:13.3-slim AS runtime
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
-    libssl3 \
+    libssl3t64 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
