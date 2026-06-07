@@ -57,7 +57,7 @@ sha2 = "0.10"
 uuid = { version = "1.6", features = ["v4", "serde"] }
 crc32fast = "1.4"
 hex = "0.4"
-jsonwebtoken = "9.3"
+jsonwebtoken = "10.3"
 
 # ENCODING
 encoding_rs = "0.8"
