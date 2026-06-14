@@ -17,7 +17,7 @@ serde.workspace = true
 flate2.workspace = true
 zip.workspace = true
 tracing.workspace = true
-lru = "0.12"
+lru = "0.16"
 snap = "1.1"
 lz4_flex = "0.11"
 
