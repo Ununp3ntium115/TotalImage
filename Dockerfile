@@ -55,7 +55,7 @@ RUN cargo build --release --workspace
 # ============================================
 # Stage 2: Runtime
 # ============================================
-FROM debian:13.5-slim AS runtime
+FROM debian:13.6-slim AS runtime
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
